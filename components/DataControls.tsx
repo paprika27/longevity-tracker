@@ -66,6 +66,65 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
     }
   };
 
+  const parseDateString = (dateInput: any): string | null => {
+      if (!dateInput) return null;
+
+      // 1. Handle JS Date Object (from xlsx cellDates: true)
+      if (dateInput instanceof Date) {
+          const year = dateInput.getFullYear();
+          const month = String(dateInput.getMonth() + 1).padStart(2, '0');
+          const day = String(dateInput.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+      }
+      
+      // 2. Handle Excel Serial Number (if cellDates failed or not used)
+      if (typeof dateInput === 'number') {
+          // Excel base date is approx 1899-12-30. 
+          // (Serial - 25569) convert 1970 offset.
+          // Simple approximation for modern dates:
+          const d = new Date(Math.round((dateInput - 25569) * 86400 * 1000));
+          if (!isNaN(d.getTime())) {
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+          }
+      }
+      
+      const str = String(dateInput).trim();
+
+      // 3. Robust Regex Parsing
+      // Remove spaces around separators to handle "26. 08. 2002"
+      const cleanStr = str.replace(/\s+([./-])/g, '$1').replace(/([./-])\s+/g, '$1');
+
+      // Match DD.MM.YYYY or DD/MM/YYYY
+      // Supports 1 or 2 digit day/month, 2 or 4 digit year
+      const dmyMatch = cleanStr.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+      if (dmyMatch) {
+          let yearStr = dmyMatch[3];
+          if (yearStr.length === 2) {
+              // Guess century: > 40 is 19xx, <= 40 is 20xx (Simple heuristic)
+              const y = parseInt(yearStr);
+              yearStr = (y > 40 ? '19' : '20') + yearStr;
+          }
+          return `${yearStr}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+      }
+
+      // Match YYYY-MM-DD or YYYY.MM.DD
+      const ymdMatch = cleanStr.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+      if (ymdMatch) {
+          return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+      }
+      
+      // 4. Fallback to Date.parse (handles "Aug 26 2002" etc)
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+          return d.toISOString().split('T')[0];
+      }
+
+      return null;
+  };
+
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -84,33 +143,52 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                     const workbook = XLSX.read(bstr, { type: 'binary' });
                     const sheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[sheetName];
+                    // cellDates: true attempts to convert formatted cells to JS Date objects
                     const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { cellDates: true } as any);
 
-                    // We expect columns: metric, value, unit, date, time
                     // Group by Timestamp
                     const groupedData: Record<string, MetricValues> = {};
                     const newMetricsMap: Map<string, Partial<MetricConfig>> = new Map();
+                    let importedCount = 0;
 
-                    jsonData.forEach(row => {
-                         const metricId = row['metric'];
-                         const val = row['value'];
-                         const unit = row['unit'] || '';
-                         let dateStr = row['date'];
-                         let timeStr = row['time'];
+                    jsonData.forEach((row, rowIndex) => {
+                         // Normalize Keys (lowercase) to handle 'Metric', 'METRIC', 'metric'
+                         const normRow: any = {};
+                         Object.keys(row).forEach(k => normRow[k.toLowerCase().trim()] = row[k]);
 
-                         if (!metricId || val === undefined || !dateStr) return;
+                         const metricId = normRow['metric'];
+                         const val = normRow['value'];
+                         const unit = normRow['unit'] || '';
+                         const rawDate = normRow['date'];
+                         let timeStr = normRow['time'];
 
-                         // Handle date if it comes as object (from cellDates: true)
-                         if (dateStr instanceof Date) {
-                             // Convert back to YYYY-MM-DD
-                             const year = dateStr.getFullYear();
-                             const month = String(dateStr.getMonth() + 1).padStart(2, '0');
-                             const day = String(dateStr.getDate()).padStart(2, '0');
-                             dateStr = `${year}-${month}-${day}`;
+                         // Debug logging for first row to help troubleshooting
+                         if (rowIndex === 0) {
+                             console.log("First row import sample:", { rawDate, dateType: typeof rawDate, metricId, val });
                          }
+
+                         if (!metricId || val === undefined || !rawDate) return;
+
+                         const dateStr = parseDateString(rawDate);
+                         if (!dateStr) return;
 
                          // Default time if missing
                          if (!timeStr) timeStr = "12:00";
+                         
+                         // Clean up time string
+                         if (timeStr instanceof Date) {
+                             timeStr = timeStr.toTimeString().slice(0, 5);
+                         } else if (typeof timeStr === 'number') {
+                             // Decimal day fraction
+                             const totalSeconds = Math.round(timeStr * 86400);
+                             const hours = Math.floor(totalSeconds / 3600);
+                             const minutes = Math.floor((totalSeconds % 3600) / 60);
+                             timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                         } else {
+                             timeStr = String(timeStr).trim();
+                             // Ensure HH:MM format (simple check)
+                             if (!timeStr.match(/^\d{1,2}:\d{2}/)) timeStr = "12:00";
+                         }
 
                          // Construct Timestamp (Local -> ISO)
                          let timestamp = new Date().toISOString();
@@ -119,6 +197,8 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                              const d = new Date(`${dateStr}T${timeStr}`);
                              if (!isNaN(d.getTime())) {
                                  timestamp = d.toISOString();
+                             } else {
+                                 timestamp = new Date(dateStr).toISOString();
                              }
                          } catch (e) {}
 
@@ -127,6 +207,7 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                              groupedData[timestamp] = {};
                          }
                          groupedData[timestamp][metricId] = val;
+                         importedCount++;
 
                          // Track potential new metrics
                          const existing = metrics.find(m => m.id === metricId);
@@ -134,6 +215,12 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                              newMetricsMap.set(metricId, { unit });
                          }
                     });
+
+                    if (importedCount === 0) {
+                        alert("No valid data found. \nPlease check:\n1. Column headers are 'metric', 'value', 'date'.\n2. Date format is DD.MM.YYYY or YYYY-MM-DD.\n3. File is not empty.");
+                        setLoading(false);
+                        return;
+                    }
 
                     // Handle New Metrics
                     if (newMetricsMap.size > 0) {
@@ -157,7 +244,6 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                         });
                         if (toAdd.length > 0) {
                              db.saveMetrics([...existingMetrics, ...toAdd]);
-                             alert(`Added ${toAdd.length} new metrics from file.`);
                         }
                     }
 
@@ -166,14 +252,15 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                         db.saveEntry(values, ts);
                     });
 
-                    alert(`Successfully imported entries.`);
+                    alert(`Successfully imported ${importedCount} data points across ${Object.keys(groupedData).length} entries.`);
                     onImportComplete();
 
                 } catch (err) {
                     console.error("Parse error:", err);
-                    alert("Failed to parse Excel file.");
+                    alert("Failed to parse Excel file content.");
                 } finally {
                     setLoading(false);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
                 }
             }
         };
@@ -181,9 +268,9 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
     } catch (error) {
         console.error("Import load error:", error);
         setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
         alert("Failed to load Excel library.");
     }
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
 
@@ -242,10 +329,11 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
           } catch (err) {
               console.error(err);
               alert("Invalid JSON file.");
+          } finally {
+            if (jsonInputRef.current) jsonInputRef.current.value = '';
           }
       };
       reader.readAsText(file);
-      if (jsonInputRef.current) jsonInputRef.current.value = '';
   };
 
   return (

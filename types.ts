@@ -1,3 +1,4 @@
+
 export interface MetricConfig {
   id: string;
   name: string;
@@ -10,6 +11,7 @@ export interface MetricConfig {
   active: boolean;
   includeInSpider: boolean;
   isCalculated?: boolean; // New flag for metrics like BMI that are derived
+  formula?: string; // JavaScript expression using metric IDs as variables
 }
 
 // Map of metric ID to value (number) or null if not recorded

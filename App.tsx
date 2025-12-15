@@ -51,24 +51,119 @@ const App: React.FC = () => {
       setMetrics(updatedMetrics);
   };
 
+  const handleMetricRename = (oldId: string, newId: string, newConfig: MetricConfig): boolean => {
+      // 1. Check if newId exists (Merge scenario)
+      const targetMetric = metrics.find(m => m.id === newId && m.id !== oldId);
+
+      if (targetMetric) {
+          if (!window.confirm(`Metric ID '${newId}' already exists. Do you want to merge data from '${oldId}' into '${newId}'? This cannot be undone.`)) {
+              return false;
+          }
+
+          // MERGE STRATEGY: 
+          // 1. Iterate all entries.
+          // 2. If an entry has oldId, move value to newId.
+          // 3. If newId already has value in that entry, KEEP existing newId value (or overwrite? usually keep existing is safer, assuming merge is for gaps). 
+          //    Let's stick to "Merge missing".
+          
+          const updatedEntries = entries.map(entry => {
+             const val = entry.values[oldId];
+             if (val !== undefined && val !== null) {
+                 // Check if target already has data
+                 if (entry.values[newId] === undefined || entry.values[newId] === null) {
+                     // Move data
+                     const newValues = { ...entry.values, [newId]: val };
+                     delete newValues[oldId];
+                     return { ...entry, values: newValues };
+                 } else {
+                     // Target exists, just remove old
+                     const newValues = { ...entry.values };
+                     delete newValues[oldId];
+                     return { ...entry, values: newValues };
+                 }
+             }
+             return entry;
+          });
+
+          db.saveAllEntries(updatedEntries);
+          setEntries(updatedEntries);
+
+          // Remove old metric config, update target if needed (we keep target config usually)
+          // The user was editing `oldId`, so maybe they wanted to apply `newConfig` to `targetMetric`?
+          // Let's assume we keep the target metric config but maybe update it with the edits?
+          // For simplicity, we just delete the old metric and keep the target metric as is.
+          const updatedMetrics = metrics.filter(m => m.id !== oldId);
+          db.saveMetrics(updatedMetrics);
+          setMetrics(updatedMetrics);
+          return true;
+
+      } else {
+          // SIMPLE RENAME
+          // Update all entries
+          const updatedEntries = entries.map(entry => {
+              if (entry.values[oldId] !== undefined) {
+                  const newValues = { ...entry.values, [newId]: entry.values[oldId] };
+                  delete newValues[oldId];
+                  return { ...entry, values: newValues };
+              }
+              return entry;
+          });
+          
+          db.saveAllEntries(updatedEntries);
+          setEntries(updatedEntries);
+
+          // Update metric config
+          const updatedMetrics = metrics.map(m => m.id === oldId ? { ...newConfig, id: newId } : m);
+          db.saveMetrics(updatedMetrics);
+          setMetrics(updatedMetrics);
+          return true;
+      }
+  };
+
   // --- DERIVED STATE ---
   
-  // 1. Calculate BMI for all entries and inject it
+  // 1. Calculate Derived Metrics (Formulas)
   const processedEntries = useMemo(() => {
+      // Identify metrics that need calculation
+      const calculatedMetrics = metrics.filter(m => m.isCalculated && m.formula);
+      
+      if (calculatedMetrics.length === 0) return entries;
+
       return entries.map(entry => {
-          const weight = entry.values['weight'];
-          const height = entry.values['height'];
           const newValues = { ...entry.values };
           
-          if (weight && height) {
-              // Calculate BMI: kg / m^2
-              const heightM = height / 100;
-              const bmi = weight / (heightM * heightM);
-              newValues['bmi'] = parseFloat(bmi.toFixed(1));
-          }
+          calculatedMetrics.forEach(m => {
+              if (!m.formula) return;
+              try {
+                  const func = new Function('vals', `
+                    with(vals) {
+                        try {
+                            return ${m.formula};
+                        } catch(e) { return null; }
+                    }
+                  `);
+                  
+                  const context: any = {};
+                  Object.keys(newValues).forEach(k => {
+                      context[k] = newValues[k];
+                  });
+                  metrics.forEach(met => {
+                      if (context[met.id] === undefined) context[met.id] = null;
+                  });
+
+                  const result = func(context);
+                  
+                  if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+                      newValues[m.id] = parseFloat(result.toFixed(2));
+                  }
+              } catch (e) {
+                  // console.warn(`Failed to calculate ${m.id}`, e);
+              }
+          });
+
           return { ...entry, values: newValues };
       });
-  }, [entries]);
+  }, [entries, metrics]);
 
   const latestEntry = useMemo(() => processedEntries.length > 0 ? processedEntries[processedEntries.length - 1] : null, [processedEntries]);
   
@@ -353,7 +448,11 @@ const App: React.FC = () => {
                 <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold text-slate-900">Settings & Metrics</h2>
                 </div>
-                <MetricManager metrics={metrics} onUpdate={handleMetricsUpdate} />
+                <MetricManager 
+                    metrics={metrics} 
+                    onUpdate={handleMetricsUpdate} 
+                    onRename={handleMetricRename}
+                />
             </div>
         )}
       </main>

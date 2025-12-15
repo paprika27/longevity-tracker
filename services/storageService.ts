@@ -33,6 +33,14 @@ export const saveEntry = (values: MetricValues, customTimestamp?: string): LogEn
   return newEntry;
 };
 
+export const saveAllEntries = (entries: LogEntry[]): void => {
+  // Ensure sorted
+  const sorted = [...entries].sort((a, b) => 
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+  localStorage.setItem(ENTRIES_KEY, JSON.stringify(sorted));
+};
+
 export const getLatestEntry = (): LogEntry | null => {
   const entries = getEntries();
   if (entries.length === 0) return null;

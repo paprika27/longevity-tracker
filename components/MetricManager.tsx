@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { MetricConfig } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator } from 'lucide-react';
 import * as db from '../services/storageService';
 
 interface MetricManagerProps {
   metrics: MetricConfig[];
   onUpdate: (newMetrics: MetricConfig[]) => void;
+  onRename?: (oldId: string, newId: string, newConfig: MetricConfig) => boolean;
 }
 
-export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate }) => {
+export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate, onRename }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<MetricConfig>>({});
   
@@ -85,9 +86,22 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
 
   const saveEdit = () => {
     if (!editingId) return;
-    const updated = metrics.map(m => m.id === editingId ? { ...m, ...editForm } as MetricConfig : m);
-    onUpdate(updated);
-    db.saveMetrics(updated);
+    
+    // Check for ID change
+    if (editForm.id && editForm.id !== editingId && onRename) {
+        const success = onRename(editingId, editForm.id, editForm as MetricConfig);
+        if (!success) {
+            // If merge was cancelled, keep edit mode open?
+            // Or if rename failed.
+            return; 
+        }
+    } else {
+        // Normal Update
+        const updated = metrics.map(m => m.id === editingId ? { ...m, ...editForm } as MetricConfig : m);
+        onUpdate(updated);
+        db.saveMetrics(updated);
+    }
+    
     setEditingId(null);
     setEditForm({});
   };
@@ -129,10 +143,18 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
     setActiveCategory(defaultCats[0]);
   };
 
-  // Filter metrics: show those in current category, OR show ALL if in selection mode to allow moving them in
+  // Filter metrics: Show all except calculated ones in normal view, unless we are editing a calculated one
   const displayedMetrics = isSelectionMode 
-    ? metrics.filter(m => !m.isCalculated) // Show all inputs to check/uncheck
-    : metrics.filter(m => m.category === activeCategory && !m.isCalculated); // Normal view
+    ? metrics.filter(m => !m.isCalculated) // Don't allow selecting calculated metrics for forms usually
+    : metrics.filter(m => (m.category === activeCategory && !m.isCalculated) || (m.isCalculated && activeCategory === 'Calculated') || (m.isCalculated && editingId === m.id));
+
+  // If active category is a real category, don't show calculated unless specifically designed
+  // Let's make a virtual category for calculated metrics if user wants to see them
+  const viewableCategories = [...categories, 'Calculated'];
+
+  const filteredMetrics = activeCategory === 'Calculated' 
+      ? metrics.filter(m => m.isCalculated) 
+      : metrics.filter(m => m.category === activeCategory && !m.isCalculated);
 
   return (
     <div className="space-y-6">
@@ -153,7 +175,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
             </div>
 
             <div className="flex flex-wrap gap-2 items-center">
-                {categories.map(cat => (
+                {viewableCategories.map(cat => (
                     <div key={cat} className="relative group">
                         <button
                             onClick={() => setActiveCategory(cat)}
@@ -163,9 +185,10 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                                 : 'bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200'
                             }`}
                         >
+                            {cat === 'Calculated' && <Calculator className="w-3 h-3 inline mr-1" />}
                             {cat}
                         </button>
-                        {categories.length > 1 && (
+                        {categories.includes(cat) && categories.length > 1 && (
                             <button 
                                 onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat); }}
                                 className="absolute -top-1 -right-1 bg-red-100 text-red-500 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
@@ -181,6 +204,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                 </button>
             </div>
             
+            {activeCategory !== 'Calculated' && (
             <div className="flex items-center gap-2 mt-2">
                 <button 
                     onClick={() => setIsSelectionMode(!isSelectionMode)}
@@ -193,16 +217,17 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                 </button>
                 {isSelectionMode && <span className="text-xs text-slate-500">Check metrics to add them to the <strong>{activeCategory}</strong> form.</span>}
             </div>
+            )}
         </div>
 
         <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-          {displayedMetrics.map(m => {
+          {(isSelectionMode ? metrics.filter(m => !m.isCalculated) : filteredMetrics).map(m => {
             const isAssigned = m.category === activeCategory;
             return (
-            <div key={m.id} className={`p-4 flex items-center gap-4 transition-colors ${isAssigned ? 'bg-white' : 'bg-slate-50/50 opacity-60'}`}>
+            <div key={m.id} className={`p-4 flex items-center gap-4 transition-colors ${isAssigned || activeCategory === 'Calculated' ? 'bg-white' : 'bg-slate-50/50 opacity-60'}`}>
               
               {/* Selection Checkbox (Only in Selection Mode) */}
-              {isSelectionMode && (
+              {isSelectionMode && activeCategory !== 'Calculated' && (
                   <button 
                     onClick={() => handleMoveToCategory(m.id, isAssigned ? (categories[0] === activeCategory ? categories[1] || 'archive' : categories[0]) : activeCategory)}
                     className={`p-1 rounded ${isAssigned ? 'text-indigo-600' : 'text-slate-300'}`}
@@ -223,6 +248,18 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                                 value={editForm.name} 
                                 onChange={e => setEditForm({...editForm, name: e.target.value})}
                             />
+                        </div>
+                         <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">ID (Variable Name)</label>
+                            <input 
+                                type="text" 
+                                className="w-full text-sm font-medium text-slate-900 border-slate-300 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white" 
+                                value={editForm.id} 
+                                onChange={e => setEditForm({...editForm, id: e.target.value.replace(/\s+/g, '_')})}
+                                title="Editing this ID to an existing one will merge them."
+                                placeholder="Unique ID"
+                            />
+                            <p className="text-[10px] text-slate-500">Change to rename. Set to existing ID to merge data.</p>
                         </div>
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Unit</label>
@@ -253,6 +290,36 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                                 onChange={e => setEditForm({...editForm, range: [editForm.range?.[0] || 0, parseFloat(e.target.value)]})}
                             />
                         </div>
+
+                        {/* Calculation Settings */}
+                        <div className="md:col-span-2 space-y-2 border-t border-slate-100 pt-2 mt-2">
+                             <div className="flex items-center gap-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="isCalculated"
+                                    checked={editForm.isCalculated || false}
+                                    onChange={e => setEditForm({...editForm, isCalculated: e.target.checked})}
+                                    className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                />
+                                <label htmlFor="isCalculated" className="text-sm font-medium text-slate-700">Calculated Automatically (Compound Score)</label>
+                             </div>
+                             
+                             {editForm.isCalculated && (
+                                 <div className="space-y-1">
+                                     <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Formula (JS)</label>
+                                     <input 
+                                        type="text" 
+                                        className="w-full font-mono text-sm text-slate-900 border-slate-300 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-slate-50" 
+                                        value={editForm.formula || ''} 
+                                        onChange={e => setEditForm({...editForm, formula: e.target.value})}
+                                        placeholder="e.g. weight / ((height/100) * (height/100))"
+                                     />
+                                     <p className="text-[10px] text-slate-500">Use metric IDs as variables. Example: <span className="font-mono">weight / (height/100)**2</span></p>
+                                 </div>
+                             )}
+                        </div>
+
+                        {!editForm.isCalculated && (
                         <div className="space-y-1 md:col-span-2">
                              <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Assigned Form</label>
                              <select 
@@ -264,6 +331,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                                  <option value="imported">Unassigned / Imported</option>
                              </select>
                         </div>
+                        )}
                     </div>
                     <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-slate-100">
                         <button onClick={cancelEdit} className="text-sm font-medium px-4 py-2 text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors">
@@ -281,9 +349,11 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                         <div className="flex items-center gap-2">
                             <h4 className={`font-semibold text-base ${m.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{m.name}</h4>
                             {!m.active && <span className="text-[10px] uppercase bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-medium">Hidden</span>}
+                            {m.isCalculated && <span className="text-[10px] uppercase bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded font-medium flex items-center gap-1"><Calculator className="w-3 h-3"/> Auto</span>}
                             {!isAssigned && isSelectionMode && <span className="text-[10px] uppercase bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">In {m.category}</span>}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                             <span className="font-mono text-slate-400">ID: {m.id}</span>
                              <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-mono">{m.range[0]} - {m.range[1]} {m.unit}</span>
                              {m.active && m.includeInSpider && <span className="flex items-center gap-0.5 text-blue-600"><Radar className="w-3 h-3"/> Spider</span>}
                         </div>
@@ -292,6 +362,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                     {!isSelectionMode && (
                     <div className="flex items-center gap-2">
                          {/* Toggle Active (Show in Forms) */}
+                         {!m.isCalculated && (
                          <button 
                             onClick={() => handleToggleActive(m.id)}
                             title={m.active ? "Hide from Input Forms" : "Show in Input Forms"}
@@ -299,6 +370,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
                         >
                             {m.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </button>
+                         )}
                         
                         {/* Toggle Spider (Show in Chart) */}
                         <button 
@@ -330,16 +402,17 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate 
             </div>
             );
           })}
-          {displayedMetrics.length === 0 && (
+          {(isSelectionMode ? metrics.filter(m => !m.isCalculated) : filteredMetrics).length === 0 && (
               <div className="p-12 text-center text-slate-400">
-                  <p className="italic mb-2">No metrics assigned to this form yet.</p>
+                  <p className="italic mb-2">No metrics found.</p>
+                  {activeCategory !== 'Calculated' && (
                   <button onClick={() => setIsSelectionMode(true)} className="text-indigo-600 font-medium hover:underline text-sm">
-                      Click here to select existing metrics
+                      Select metrics for {activeCategory}
                   </button>
-                  <span className="mx-2 text-slate-300">or</span>
-                  <button onClick={handleAddNewMetric} className="text-indigo-600 font-medium hover:underline text-sm">
-                      Create new
-                  </button>
+                  )}
+                  {activeCategory === 'Calculated' && (
+                      <p className="text-xs">Create a new metric and check "Calculated Automatically" to add it here.</p>
+                  )}
               </div>
           )}
         </div>
