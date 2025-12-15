@@ -24,14 +24,20 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
     setLoading(true);
 
     try {
-        const XLSX = await import('xlsx');
+        const xlsxModule = await import('xlsx');
+        const XLSX = xlsxModule.default || xlsxModule;
         
         // Transform to Long Format: metric | value | unit | date | time
         const rows: any[] = [];
         
         entries.forEach(entry => {
             const dateObj = new Date(entry.timestamp);
-            const dateStr = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD
+            // Use local date components to avoid UTC shifts
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            
             const timeStr = dateObj.toTimeString().slice(0, 5); // HH:MM
 
             Object.entries(entry.values).forEach(([metricId, val]) => {
@@ -54,7 +60,7 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
         XLSX.writeFile(workbook, "LongevityTracker_Data.xlsx");
     } catch (error) {
         console.error("Export failed:", error);
-        alert("Failed to export data.");
+        alert("Failed to export data. Check console for details.");
     } finally {
         setLoading(false);
     }
@@ -66,7 +72,9 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
 
     setLoading(true);
     try {
-        const XLSX = await import('xlsx');
+        const xlsxModule = await import('xlsx');
+        const XLSX = xlsxModule.default || xlsxModule;
+        
         const reader = new FileReader();
         
         reader.onload = (evt) => {
@@ -92,18 +100,22 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
 
                          if (!metricId || val === undefined || !dateStr) return;
 
-                         // Normalize Date
+                         // Handle date if it comes as object (from cellDates: true)
                          if (dateStr instanceof Date) {
-                             dateStr = dateStr.toISOString().split('T')[0];
+                             // Convert back to YYYY-MM-DD
+                             const year = dateStr.getFullYear();
+                             const month = String(dateStr.getMonth() + 1).padStart(2, '0');
+                             const day = String(dateStr.getDate()).padStart(2, '0');
+                             dateStr = `${year}-${month}-${day}`;
                          }
 
                          // Default time if missing
                          if (!timeStr) timeStr = "12:00";
 
-                         // Construct ISO Timestamp
+                         // Construct Timestamp (Local -> ISO)
                          let timestamp = new Date().toISOString();
                          try {
-                             // Assuming YYYY-MM-DD and HH:MM
+                             // Create date in local time
                              const d = new Date(`${dateStr}T${timeStr}`);
                              if (!isNaN(d.getTime())) {
                                  timestamp = d.toISOString();
@@ -128,7 +140,6 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                         const existingMetrics = db.getMetrics();
                         const toAdd: MetricConfig[] = [];
                         newMetricsMap.forEach((conf, id) => {
-                            // Double check if it really doesn't exist
                             if (!existingMetrics.find(m => m.id === id)) {
                                 toAdd.push({
                                     id,
@@ -151,17 +162,15 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                     }
 
                     // Save Entries
-                    let count = 0;
                     Object.entries(groupedData).forEach(([ts, values]) => {
                         db.saveEntry(values, ts);
-                        count++;
                     });
 
                     alert(`Successfully imported entries.`);
                     onImportComplete();
 
                 } catch (err) {
-                    console.error(err);
+                    console.error("Parse error:", err);
                     alert("Failed to parse Excel file.");
                 } finally {
                     setLoading(false);
@@ -170,8 +179,9 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
         };
         reader.readAsBinaryString(file);
     } catch (error) {
-        console.error(error);
+        console.error("Import load error:", error);
         setLoading(false);
+        alert("Failed to load Excel library.");
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -209,18 +219,26 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
               const str = evt.target?.result as string;
               const data = JSON.parse(str);
               
+              let updated = false;
               if (data.metrics && Array.isArray(data.metrics)) {
                   db.saveMetrics(data.metrics);
+                  updated = true;
               }
               if (data.categories && Array.isArray(data.categories)) {
                   db.saveCategories(data.categories);
+                  updated = true;
               }
               if (typeof data.regimen === 'string') {
                   db.saveRegimen(data.regimen);
+                  updated = true;
               }
               
-              alert("Configuration imported successfully.");
-              onImportComplete();
+              if (updated) {
+                  alert("Configuration imported successfully.");
+                  onImportComplete();
+              } else {
+                  alert("No valid configuration data found in JSON.");
+              }
           } catch (err) {
               console.error(err);
               alert("Invalid JSON file.");
