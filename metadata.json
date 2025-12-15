@@ -1,0 +1,5 @@
+{
+  "name": "Longevity Tracker",
+  "description": "A privacy-focused, evidence-based application to track, visualize, and optimize your key longevity metrics using local storage.",
+  "requestFramePermissions": []
+}
