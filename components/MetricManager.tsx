@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { MetricConfig } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator, AlertTriangle, FlaskConical } from 'lucide-react';
 import * as db from '../services/storageService';
 
 interface MetricManagerProps {
   metrics: MetricConfig[];
   onUpdate: (newMetrics: MetricConfig[]) => void;
   onRename?: (oldId: string, newId: string, newConfig: MetricConfig) => boolean;
+  onFactoryReset: () => void;
 }
 
-export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate, onRename }) => {
+export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate, onRename, onFactoryReset }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<MetricConfig>>({});
   
@@ -84,15 +85,42 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
     setEditForm({});
   };
 
+  const validateFormula = (formula: string): boolean => {
+      // 1. Check syntax by creating function
+      try {
+          const f = new Function('vals', `with(vals) { return ${formula}; }`);
+          
+          // 2. Check variables. Simple regex to find words.
+          // This is a naive check but helps basic typos.
+          const vars = formula.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+          const knownIds = metrics.map(m => m.id);
+          // Filter out JS keywords/math object members to be safe? 
+          // Actually, just checking if *some* variables exist is usually enough for a "quick check"
+          // Let's just run it with dummy data.
+          
+          const dummyData: any = {};
+          metrics.forEach(m => dummyData[m.id] = 1);
+          
+          f(dummyData); // Run it
+          return true;
+      } catch (e: any) {
+          alert("Formula Error: " + e.message + "\n\nMake sure you are using valid Metric IDs (e.g. 'weight', 'height').");
+          return false;
+      }
+  };
+
   const saveEdit = () => {
     if (!editingId) return;
+
+    if (editForm.isCalculated && editForm.formula) {
+        if (!validateFormula(editForm.formula)) return;
+    }
     
     // Check for ID change
     if (editForm.id && editForm.id !== editingId && onRename) {
         const success = onRename(editingId, editForm.id, editForm as MetricConfig);
         if (!success) {
-            // If merge was cancelled, keep edit mode open?
-            // Or if rename failed.
+            // If merge was cancelled, keep edit mode open
             return; 
         }
     } else {
@@ -143,15 +171,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
     setActiveCategory(defaultCats[0]);
   };
 
-  // Filter metrics: Show all except calculated ones in normal view, unless we are editing a calculated one
-  const displayedMetrics = isSelectionMode 
-    ? metrics.filter(m => !m.isCalculated) // Don't allow selecting calculated metrics for forms usually
-    : metrics.filter(m => (m.category === activeCategory && !m.isCalculated) || (m.isCalculated && activeCategory === 'Calculated') || (m.isCalculated && editingId === m.id));
-
-  // If active category is a real category, don't show calculated unless specifically designed
-  // Let's make a virtual category for calculated metrics if user wants to see them
-  const viewableCategories = [...categories, 'Calculated'];
-
+  // Filter metrics
   const filteredMetrics = activeCategory === 'Calculated' 
       ? metrics.filter(m => m.isCalculated) 
       : metrics.filter(m => m.category === activeCategory && !m.isCalculated);
@@ -175,7 +195,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
             </div>
 
             <div className="flex flex-wrap gap-2 items-center">
-                {viewableCategories.map(cat => (
+                {categories.map(cat => (
                     <div key={cat} className="relative group">
                         <button
                             onClick={() => setActiveCategory(cat)}
@@ -185,7 +205,6 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                                 : 'bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200'
                             }`}
                         >
-                            {cat === 'Calculated' && <Calculator className="w-3 h-3 inline mr-1" />}
                             {cat}
                         </button>
                         {categories.includes(cat) && categories.length > 1 && (
@@ -199,6 +218,17 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                         )}
                     </div>
                 ))}
+                 <button
+                    onClick={() => setActiveCategory('Calculated')}
+                    className={`text-sm font-medium px-4 py-2 rounded-md transition-colors capitalize border flex items-center gap-1.5 ${
+                        activeCategory === 'Calculated'
+                        ? 'bg-purple-50 border-purple-200 text-purple-700 shadow-sm ring-1 ring-purple-200' 
+                        : 'bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200'
+                    }`}
+                >
+                    <Calculator className="w-3 h-3" /> Calculated
+                </button>
+
                 <button onClick={handleAddCategory} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors" title="Add New Form">
                     <Plus className="w-4 h-4" />
                 </button>
@@ -305,16 +335,27 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                              </div>
                              
                              {editForm.isCalculated && (
-                                 <div className="space-y-1">
-                                     <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Formula (JS)</label>
+                                 <div className="space-y-1 bg-slate-50 p-3 rounded border border-slate-200">
+                                     <div className="flex justify-between">
+                                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Formula (JS)</label>
+                                        <button 
+                                            onClick={() => { if(editForm.formula) validateFormula(editForm.formula) ? alert("Formula is valid!") : null; }}
+                                            className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded hover:bg-green-200 border border-green-200 flex items-center gap-1"
+                                        >
+                                            <FlaskConical className="w-3 h-3"/> Test Syntax
+                                        </button>
+                                     </div>
                                      <input 
                                         type="text" 
-                                        className="w-full font-mono text-sm text-slate-900 border-slate-300 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-slate-50" 
+                                        className="w-full font-mono text-sm text-slate-900 border-slate-300 rounded-md focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white mb-1" 
                                         value={editForm.formula || ''} 
                                         onChange={e => setEditForm({...editForm, formula: e.target.value})}
                                         placeholder="e.g. weight / ((height/100) * (height/100))"
                                      />
-                                     <p className="text-[10px] text-slate-500">Use metric IDs as variables. Example: <span className="font-mono">weight / (height/100)**2</span></p>
+                                     <p className="text-[10px] text-slate-500">
+                                         Available variables: {metrics.map(x => x.id).join(', ')}. <br/>
+                                         Example: <span className="font-mono text-slate-700">weight / Math.pow(height/100, 2)</span>
+                                     </p>
                                  </div>
                              )}
                         </div>
@@ -415,6 +456,24 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                   )}
               </div>
           )}
+        </div>
+      </div>
+
+      <div className="mt-8 pt-8 border-t border-slate-200">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 text-red-600 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5"/> Danger Zone
+        </h3>
+        <div className="bg-red-50 border border-red-100 rounded-lg p-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h4 className="font-semibold text-red-900">Factory Reset</h4>
+                <p className="text-sm text-red-700">Irreversibly wipe all data, metrics, and settings. Returns app to fresh state.</p>
+            </div>
+            <button 
+                onClick={onFactoryReset}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
+            >
+                <Trash2 className="w-4 h-4"/> Delete Everything
+            </button>
         </div>
       </div>
     </div>

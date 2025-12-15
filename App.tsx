@@ -7,7 +7,7 @@ import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3 } from 'lucide-react';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown } from 'lucide-react';
 
 // Helper to determine status
 const getStatus = (val: number, range: [number, number]): StatusLevel => {
@@ -28,6 +28,18 @@ const App: React.FC = () => {
   const [metrics, setMetrics] = useState<MetricConfig[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [newEntryValues, setNewEntryValues] = useState<MetricValues>({});
+
+  // Feedback State
+  const [pinnedFeedback, setPinnedFeedback] = useState<string[]>(() => {
+      try { return JSON.parse(localStorage.getItem('lt_pinned_feedback') || '[]'); } catch { return []; }
+  });
+  const [dismissedFeedback, setDismissedFeedback] = useState<string[]>(() => {
+      try { return JSON.parse(localStorage.getItem('lt_dismissed_feedback') || '[]'); } catch { return []; }
+  });
+
+  // Metrics Grid State
+  const [metricSort, setMetricSort] = useState<'default' | 'name' | 'status' | 'recency'>('default');
+  const [metricFilter, setMetricFilter] = useState<'all' | 'good' | 'fair' | 'poor'>('all');
   
   // Form Categories
   const [activeFormCategory, setActiveFormCategory] = useState<string>('daily');
@@ -40,6 +52,10 @@ const App: React.FC = () => {
     setCategories(cats);
     if (cats.length > 0) setActiveFormCategory(cats[0]);
   }, []);
+
+  // Persist feedback preferences
+  useEffect(() => { localStorage.setItem('lt_pinned_feedback', JSON.stringify(pinnedFeedback)); }, [pinnedFeedback]);
+  useEffect(() => { localStorage.setItem('lt_dismissed_feedback', JSON.stringify(dismissedFeedback)); }, [dismissedFeedback]);
 
   const refreshData = () => {
     setEntries(db.getEntries());
@@ -60,12 +76,7 @@ const App: React.FC = () => {
               return false;
           }
 
-          // MERGE STRATEGY: 
-          // 1. Iterate all entries.
-          // 2. If an entry has oldId, move value to newId.
-          // 3. If newId already has value in that entry, KEEP existing newId value (or overwrite? usually keep existing is safer, assuming merge is for gaps). 
-          //    Let's stick to "Merge missing".
-          
+          // MERGE STRATEGY
           const updatedEntries = entries.map(entry => {
              const val = entry.values[oldId];
              if (val !== undefined && val !== null) {
@@ -88,10 +99,6 @@ const App: React.FC = () => {
           db.saveAllEntries(updatedEntries);
           setEntries(updatedEntries);
 
-          // Remove old metric config, update target if needed (we keep target config usually)
-          // The user was editing `oldId`, so maybe they wanted to apply `newConfig` to `targetMetric`?
-          // Let's assume we keep the target metric config but maybe update it with the edits?
-          // For simplicity, we just delete the old metric and keep the target metric as is.
           const updatedMetrics = metrics.filter(m => m.id !== oldId);
           db.saveMetrics(updatedMetrics);
           setMetrics(updatedMetrics);
@@ -99,7 +106,6 @@ const App: React.FC = () => {
 
       } else {
           // SIMPLE RENAME
-          // Update all entries
           const updatedEntries = entries.map(entry => {
               if (entry.values[oldId] !== undefined) {
                   const newValues = { ...entry.values, [newId]: entry.values[oldId] };
@@ -112,7 +118,6 @@ const App: React.FC = () => {
           db.saveAllEntries(updatedEntries);
           setEntries(updatedEntries);
 
-          // Update metric config
           const updatedMetrics = metrics.map(m => m.id === oldId ? { ...newConfig, id: newId } : m);
           db.saveMetrics(updatedMetrics);
           setMetrics(updatedMetrics);
@@ -120,18 +125,36 @@ const App: React.FC = () => {
       }
   };
 
+  const handleFactoryReset = () => {
+      if (window.confirm("⚠ FACTORY RESET WARNING ⚠\n\nThis will DELETE ALL DATA including your history, custom metrics, and settings.\n\nThis action cannot be undone. Are you sure?")) {
+          db.factoryReset();
+          window.location.reload();
+      }
+  };
+
   // --- DERIVED STATE ---
   
-  // 1. Calculate Derived Metrics (Formulas)
+  // 1. Calculate Derived Metrics (Formulas) with Forward Fill
   const processedEntries = useMemo(() => {
-      // Identify metrics that need calculation
       const calculatedMetrics = metrics.filter(m => m.isCalculated && m.formula);
-      
       if (calculatedMetrics.length === 0) return entries;
 
-      return entries.map(entry => {
-          const newValues = { ...entry.values };
-          
+      const sortedEntries = [...entries].sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
+      const runningValues: MetricValues = {};
+
+      return sortedEntries.map(entry => {
+          Object.entries(entry.values).forEach(([key, val]) => {
+              if (val !== null && val !== undefined) {
+                  runningValues[key] = val;
+              }
+          });
+
+          const context = { ...runningValues };
+          const newValues = { ...entry.values }; 
+
           calculatedMetrics.forEach(m => {
               if (!m.formula) return;
               try {
@@ -143,62 +166,120 @@ const App: React.FC = () => {
                     }
                   `);
                   
-                  const context: any = {};
-                  Object.keys(newValues).forEach(k => {
-                      context[k] = newValues[k];
-                  });
-                  metrics.forEach(met => {
-                      if (context[met.id] === undefined) context[met.id] = null;
-                  });
-
                   const result = func(context);
-                  
                   if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-                      newValues[m.id] = parseFloat(result.toFixed(2));
+                      const finalVal = parseFloat(result.toFixed(2));
+                      newValues[m.id] = finalVal;
+                      runningValues[m.id] = finalVal;
                   }
-              } catch (e) {
-                  // console.warn(`Failed to calculate ${m.id}`, e);
-              }
+              } catch (e) { }
           });
 
           return { ...entry, values: newValues };
       });
   }, [entries, metrics]);
 
-  const latestEntry = useMemo(() => processedEntries.length > 0 ? processedEntries[processedEntries.length - 1] : null, [processedEntries]);
+  // 2. Compute "Current State" for Dashboard (Aggregating latest value for EVERY metric)
+  const dashboardState = useMemo(() => {
+      const state: Record<string, { value: number, timestamp: string }> = {};
+      
+      // Iterate chronologically so later entries overwrite earlier ones
+      processedEntries.forEach(entry => {
+          Object.entries(entry.values).forEach(([key, val]) => {
+             if (val !== null && val !== undefined) {
+                 state[key] = { value: val, timestamp: entry.timestamp };
+             }
+          });
+      });
+      return state;
+  }, [processedEntries]);
   
-  // 2. Feedback Logic
+  // 3. Feedback Logic
   const feedback: FeedbackItem[] = useMemo(() => {
-    if (!latestEntry) return [];
+    if (Object.keys(dashboardState).length === 0) return [];
+    
     const items: FeedbackItem[] = [];
     metrics.filter(m => m.active).forEach(m => {
-        const val = latestEntry.values[m.id];
-        if (val !== null && val !== undefined) {
-            const status = getStatus(val, m.range);
+        const data = dashboardState[m.id];
+        if (data) {
+            const status = getStatus(data.value, m.range);
             let msg = "";
             if (status === StatusLevel.GOOD) {
-                msg = `Great job! Your ${m.name} (${val} ${m.unit}) is in the optimal range.`;
+                msg = `Great job! Your ${m.name} (${data.value} ${m.unit}) is in the optimal range.`;
             } else if (status === StatusLevel.FAIR) {
-                msg = `Close! Your ${m.name} (${val} ${m.unit}) is near the target range.`;
+                msg = `Close! Your ${m.name} (${data.value} ${m.unit}) is near the target range.`;
             } else {
-                msg = `Your ${m.name} (${val} ${m.unit}) is outside the target range.`;
+                msg = `Your ${m.name} (${data.value} ${m.unit}) is outside the target range.`;
             }
             items.push({
                 metricId: m.id,
                 metricName: m.name,
-                value: val,
+                value: data.value,
                 status,
                 message: msg,
                 citation: m.fact + " [" + m.citation + "]"
             });
         }
     });
-    // Sort by priority: Poor -> Fair -> Good
-    return items.sort((a, b) => {
+
+    // Filtering dismissed
+    const visible = items.filter(i => !dismissedFeedback.includes(i.metricId));
+
+    // Sorting: Pinned -> Priority (Poor -> Fair -> Good)
+    return visible.sort((a, b) => {
+        const aPinned = pinnedFeedback.includes(a.metricId) ? 1 : 0;
+        const bPinned = pinnedFeedback.includes(b.metricId) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
+
         const score = (s: StatusLevel) => s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : 2;
         return score(a.status) - score(b.status);
     });
-  }, [latestEntry, metrics]);
+  }, [dashboardState, metrics, pinnedFeedback, dismissedFeedback]);
+
+  // 4. Sorted & Filtered Metrics for Grid
+  const gridMetrics = useMemo(() => {
+      let result = metrics.filter(m => m.active);
+      
+      // Filter
+      if (metricFilter !== 'all') {
+          result = result.filter(m => {
+              const data = dashboardState[m.id];
+              if (!data) return false; // Hide unknown if filtering
+              const status = getStatus(data.value, m.range);
+              return status.toLowerCase() === metricFilter;
+          });
+      }
+
+      // Sort
+      result.sort((a, b) => {
+          if (metricSort === 'name') return a.name.localeCompare(b.name);
+          
+          if (metricSort === 'recency') {
+              const dateA = dashboardState[a.id] ? new Date(dashboardState[a.id].timestamp).getTime() : 0;
+              const dateB = dashboardState[b.id] ? new Date(dashboardState[b.id].timestamp).getTime() : 0;
+              return dateB - dateA;
+          }
+
+          if (metricSort === 'status') {
+              const statusScore = (m: MetricConfig) => {
+                  const d = dashboardState[m.id];
+                  if (!d) return 3; 
+                  const s = getStatus(d.value, m.range);
+                  return s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : 2;
+              };
+              return statusScore(a) - statusScore(b);
+          }
+
+          // Default: Category then defined order
+          if (a.category !== b.category) return a.category.localeCompare(b.category);
+          return 0;
+      });
+
+      return result;
+  }, [metrics, metricFilter, metricSort, dashboardState]);
+
+
+  // --- HANDLERS ---
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,6 +305,25 @@ const App: React.FC = () => {
           [id]: val === '' ? null : parseFloat(val)
       }));
   };
+
+  const toggleFeedbackPin = (id: string) => {
+      setPinnedFeedback(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const dismissFeedback = (id: string) => {
+      setDismissedFeedback(prev => [...prev, id]);
+  };
+
+  const restoreFeedback = () => {
+      setDismissedFeedback([]);
+  };
+
+  // Helper for Radar Chart data
+  const radarValues = useMemo(() => {
+      const vals: MetricValues = {};
+      Object.entries(dashboardState).forEach(([k, v]) => vals[k] = v.value);
+      return vals;
+  }, [dashboardState]);
 
   return (
     <div className="min-h-screen pb-12 bg-slate-50">
@@ -278,7 +378,7 @@ const App: React.FC = () => {
                     <DataControls entries={entries} metrics={metrics} onImportComplete={refreshData} />
                 </div>
 
-                {!latestEntry ? (
+                {processedEntries.length === 0 ? (
                     <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-300">
                         <Activity className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-slate-900">No data logged yet</h3>
@@ -292,26 +392,53 @@ const App: React.FC = () => {
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                              {/* Spider Diagram */}
                              <div className="lg:col-span-1">
-                                <RadarView metrics={metrics} values={latestEntry.values} />
+                                <RadarView metrics={metrics} values={radarValues} />
                              </div>
                              
                              {/* Facts & Feedback */}
                              <div className="lg:col-span-2 space-y-4">
-                                <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
-                                    <Quote className="w-5 h-5 text-indigo-500" />
-                                    Analysis & Evidence
-                                </h3>
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+                                        <Quote className="w-5 h-5 text-indigo-500" />
+                                        Analysis & Evidence
+                                    </h3>
+                                    {dismissedFeedback.length > 0 && (
+                                        <button onClick={restoreFeedback} className="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1">
+                                            <Eye className="w-3 h-3" /> Show Dismissed ({dismissedFeedback.length})
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                                     {feedback.length === 0 ? (
-                                        <p className="text-slate-400 italic">Add more metrics to your Spider Graph in Settings to see analysis here.</p>
+                                        <p className="text-slate-400 italic">No feedback available. Add more metrics to your Spider Graph or restore dismissed items.</p>
                                     ) : (
                                         feedback.map(item => (
-                                            <div key={item.metricId} className={`p-4 rounded-lg border-l-4 ${
+                                            <div key={item.metricId} className={`relative p-4 rounded-lg border-l-4 group transition-all ${
                                                 item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' : 
                                                 item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'
                                             }`}>
-                                                <div className="flex justify-between items-start">
-                                                    <h4 className="font-semibold text-slate-800">{item.metricName}</h4>
+                                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={() => toggleFeedbackPin(item.metricId)} 
+                                                        className={`p-1 rounded hover:bg-black/5 ${pinnedFeedback.includes(item.metricId) ? 'text-slate-800' : 'text-slate-400'}`}
+                                                        title="Pin to top"
+                                                    >
+                                                        <Pin className={`w-3.5 h-3.5 ${pinnedFeedback.includes(item.metricId) ? 'fill-current' : ''}`} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => dismissFeedback(item.metricId)} 
+                                                        className="p-1 rounded hover:bg-black/5 text-slate-400 hover:text-slate-600"
+                                                        title="Dismiss"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="flex justify-between items-start pr-8">
+                                                    <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+                                                        {pinnedFeedback.includes(item.metricId) && <Pin className="w-3 h-3 text-slate-500 fill-slate-500" />}
+                                                        {item.metricName}
+                                                    </h4>
                                                     <span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{item.value}</span>
                                                 </div>
                                                 <p className="text-sm text-slate-700 mt-1">{item.message}</p>
@@ -325,17 +452,64 @@ const App: React.FC = () => {
 
                         {/* Metric Cards Grid */}
                         <div>
-                            <h3 className="text-lg font-semibold text-slate-700 mb-4">Detailed Metrics</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                {metrics.filter(m => m.active).map(m => (
-                                    <MetricCard 
-                                        key={m.id} 
-                                        config={m} 
-                                        value={latestEntry.values[m.id] ?? null} 
-                                        status={latestEntry.values[m.id] !== undefined && latestEntry.values[m.id] !== null ? getStatus(latestEntry.values[m.id]!, m.range) : StatusLevel.UNKNOWN}
-                                    />
-                                ))}
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                                <h3 className="text-lg font-semibold text-slate-700">Detailed Metrics</h3>
+                                <div className="flex gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
+                                    {/* Sort Dropdown */}
+                                    <div className="relative flex items-center border-r border-slate-100 pr-2 mr-1">
+                                        <ArrowUpDown className="w-3 h-3 text-slate-400 absolute left-2 pointer-events-none" />
+                                        <select 
+                                            value={metricSort} 
+                                            onChange={(e) => setMetricSort(e.target.value as any)}
+                                            className="pl-7 pr-2 py-1 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer"
+                                        >
+                                            <option value="default">Default Sort</option>
+                                            <option value="name">Name</option>
+                                            <option value="recency">Recently Updated</option>
+                                            <option value="status">Status Priority</option>
+                                        </select>
+                                    </div>
+                                    
+                                    {/* Filter Dropdown */}
+                                    <div className="relative flex items-center">
+                                        <Filter className="w-3 h-3 text-slate-400 absolute left-2 pointer-events-none" />
+                                        <select 
+                                            value={metricFilter} 
+                                            onChange={(e) => setMetricFilter(e.target.value as any)}
+                                            className="pl-7 pr-2 py-1 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer"
+                                        >
+                                            <option value="all">All Statuses</option>
+                                            <option value="good">Good Only</option>
+                                            <option value="fair">Fair Only</option>
+                                            <option value="poor">Poor Only</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {gridMetrics.map(m => {
+                                    const data = dashboardState[m.id];
+                                    const value = data ? data.value : null;
+                                    const timestamp = data ? data.timestamp : undefined;
+                                    const status = value !== null ? getStatus(value, m.range) : StatusLevel.UNKNOWN;
+
+                                    return (
+                                        <MetricCard 
+                                            key={m.id} 
+                                            config={m} 
+                                            value={value} 
+                                            status={status}
+                                            timestamp={timestamp}
+                                        />
+                                    );
+                                })}
+                            </div>
+                            {gridMetrics.length === 0 && (
+                                <div className="text-center py-10 text-slate-400">
+                                    No metrics match your filters.
+                                </div>
+                            )}
                         </div>
                     </>
                 )}
@@ -452,6 +626,7 @@ const App: React.FC = () => {
                     metrics={metrics} 
                     onUpdate={handleMetricsUpdate} 
                     onRename={handleMetricRename}
+                    onFactoryReset={handleFactoryReset}
                 />
             </div>
         )}

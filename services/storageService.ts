@@ -106,3 +106,12 @@ export const getRegimen = (): string => {
 export const saveRegimen = (text: string): void => {
   localStorage.setItem(REGIMEN_KEY, text);
 };
+
+// --- SYSTEM ---
+
+export const factoryReset = (): void => {
+    localStorage.removeItem(ENTRIES_KEY);
+    localStorage.removeItem(METRICS_KEY);
+    localStorage.removeItem(REGIMEN_KEY);
+    localStorage.removeItem(CATEGORIES_KEY);
+};

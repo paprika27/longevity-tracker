@@ -189,7 +189,8 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     category: 'clinical',
     active: true,
     includeInSpider: true,
-    isCalculated: true
+    isCalculated: true,
+    formula: "weight / ((height/100) * (height/100))"
   },
   {
     id: "bp_systolic",
@@ -238,5 +239,48 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     category: 'clinical',
     active: true,
     includeInSpider: true
+  },
+  // New Calculated Scores (Templates)
+  {
+      id: "metabolic_score",
+      name: "Metabolic Health",
+      range: [80, 100],
+      unit: "pts",
+      fact: "Composite score of Glucose, HDL, and Waist/Height (Placeholder).",
+      citation: "Custom",
+      step: 1,
+      category: 'clinical',
+      active: true,
+      includeInSpider: true,
+      isCalculated: true,
+      formula: "/* Example: */ 100 - (glucose > 100 ? glucose - 100 : 0) - (hdl < 40 ? 40 - hdl : 0)"
+  },
+  {
+      id: "cardio_risk",
+      name: "Cardio Risk Score",
+      range: [0, 10],
+      unit: "risk",
+      fact: "Lower is better. Derived from LDL and BP.",
+      citation: "Custom",
+      step: 0.1,
+      category: 'clinical',
+      active: true,
+      includeInSpider: true,
+      isCalculated: true,
+      formula: "(ldl / 30) + (bp_systolic > 120 ? (bp_systolic-120)/10 : 0)"
+  },
+  {
+      id: "inflammation",
+      name: "Inflammation Score",
+      range: [0, 5],
+      unit: "idx",
+      fact: "Composite of CRP and other markers.",
+      citation: "Custom",
+      step: 0.1,
+      category: 'clinical',
+      active: true,
+      includeInSpider: true,
+      isCalculated: true,
+      formula: "/* Requires 'crp' metric */ typeof crp !== 'undefined' ? crp : 0"
   }
 ];
