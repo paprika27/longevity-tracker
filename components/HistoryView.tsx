@@ -6,29 +6,35 @@ import { XCircle } from 'lucide-react';
 interface HistoryViewProps {
   entries: LogEntry[];
   metrics: MetricConfig[];
+  selectedMetrics: string[];
+  onSelectionChange: (metrics: string[]) => void;
 }
 
-export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics }) => {
-  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['bmi']); 
+export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, selectedMetrics, onSelectionChange }) => {
   const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
       // Extract unique categories from active metrics
       const uniqueCats = Array.from(new Set(metrics.map(m => m.category)));
       setCategories(uniqueCats);
+      
       // Validating selection to ensure we don't have dead metrics selected
       const validSelection = selectedMetrics.filter(id => metrics.find(m => m.id === id));
-      if (validSelection.length !== selectedMetrics.length) {
-         if (metrics.length > 0) {
+      
+      // If validation fails, correct it via parent callback
+      if (validSelection.length !== selectedMetrics.length || (selectedMetrics.length === 0 && metrics.length > 0)) {
+         if (metrics.length > 0 && validSelection.length === 0) {
              const bmi = metrics.find(m => m.id === 'bmi');
-             setSelectedMetrics(bmi ? ['bmi'] : [metrics[0].id]);
-         } else if (validSelection.length === 0) {
-             setSelectedMetrics([]);
-         } else {
-             setSelectedMetrics(validSelection);
+             const defaultSelection = bmi ? ['bmi'] : [metrics[0].id];
+             // Prevent infinite loops by checking if different
+             if (defaultSelection[0] !== selectedMetrics[0]) {
+                 onSelectionChange(defaultSelection);
+             }
+         } else if (validSelection.length !== selectedMetrics.length) {
+             onSelectionChange(validSelection);
          }
       }
-  }, [metrics, selectedMetrics]);
+  }, [metrics, selectedMetrics, onSelectionChange]);
 
   // Sort entries by timestamp to ensure graph flows correctly
   const sortedEntries = useMemo(() => {
@@ -51,19 +57,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics }) =>
 
   const toggleMetric = (id: string) => {
     if (selectedMetrics.includes(id)) {
-        setSelectedMetrics(selectedMetrics.filter(m => m !== id));
+        onSelectionChange(selectedMetrics.filter(m => m !== id));
     } else {
-        setSelectedMetrics([...selectedMetrics, id]);
+        onSelectionChange([...selectedMetrics, id]);
     }
   };
 
   const selectCategory = (cat: string) => {
       const ids = metrics.filter(m => m.category === cat).map(m => m.id);
-      if (ids.length > 0) setSelectedMetrics(ids);
+      if (ids.length > 0) onSelectionChange(ids);
   };
 
   const clearSelection = () => {
-      setSelectedMetrics([]);
+      onSelectionChange([]);
   };
 
   // Generate colors

@@ -7,7 +7,7 @@ import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown } from 'lucide-react';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2 } from 'lucide-react';
 
 // Helper to determine status
 const getStatus = (val: number, range: [number, number]): StatusLevel => {
@@ -29,6 +29,9 @@ const [metrics, setMetrics] = useState<MetricConfig[]>([]);
 const [categories, setCategories] = useState<string[]>([]);
 const [newEntryValues, setNewEntryValues] = useState<MetricValues>({});
 
+// History State
+const [historySelectedMetrics, setHistorySelectedMetrics] = useState<string[]>(['bmi']);
+
 // Feedback State
 const [pinnedFeedback, setPinnedFeedback] = useState<string[]>(() => {
 try { return JSON.parse(localStorage.getItem('lt_pinned_feedback') || '[]'); } catch { return []; }
@@ -36,6 +39,7 @@ try { return JSON.parse(localStorage.getItem('lt_pinned_feedback') || '[]'); } c
 const [dismissedFeedback, setDismissedFeedback] = useState<string[]>(() => {
 try { return JSON.parse(localStorage.getItem('lt_dismissed_feedback') || '[]'); } catch { return []; }
 });
+const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<'all' | 'good' | 'fair' | 'poor'>('all');
 
 // Metrics Grid State
 const [metricSort, setMetricSort] = useState<'default' | 'name' | 'status' | 'recency'>('default');
@@ -194,8 +198,8 @@ state[key] = { value: val, timestamp: entry.timestamp };
 return state;
 }, [processedEntries]);
 
-// 3. Feedback Logic
-const feedback: FeedbackItem[] = useMemo(() => {
+// 3. Feedback Logic (Base - Unfiltered by display preferences)
+const baseFeedback: FeedbackItem[] = useMemo(() => {
 if (Object.keys(dashboardState).length === 0) return [];
 
 const items: FeedbackItem[] = [];
@@ -221,22 +225,32 @@ citation: m.fact + " [" + m.citation + "]"
 });
 }
 });
+return items;
+}, [dashboardState, metrics]);
 
-// Filtering dismissed
-const visible = items.filter(i => !dismissedFeedback.includes(i.metricId));
+// 4. Displayed Feedback (Filtered by Dismissed, Pinned, and Color)
+const displayedFeedback = useMemo(() => {
+    // Exclude dismissed items
+    let visible = baseFeedback.filter(i => !dismissedFeedback.includes(i.metricId));
+    
+    // Apply Status Filter
+    if (feedbackStatusFilter !== 'all') {
+        visible = visible.filter(item => item.status.toLowerCase() === feedbackStatusFilter);
+    }
 
-// Sorting: Pinned -> Priority (Poor -> Fair -> Good)
-return visible.sort((a, b) => {
-const aPinned = pinnedFeedback.includes(a.metricId) ? 1 : 0;
-const bPinned = pinnedFeedback.includes(b.metricId) ? 1 : 0;
-if (aPinned !== bPinned) return bPinned - aPinned;
+    // Sort: Pinned -> Priority (Poor -> Fair -> Good)
+    return visible.sort((a, b) => {
+        const aPinned = pinnedFeedback.includes(a.metricId) ? 1 : 0;
+        const bPinned = pinnedFeedback.includes(b.metricId) ? 1 : 0;
+        if (aPinned !== bPinned) return bPinned - aPinned;
 
-const score = (s: StatusLevel) => s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : 2;
-return score(a.status) - score(b.status);
-});
-}, [dashboardState, metrics, pinnedFeedback, dismissedFeedback]);
+        const score = (s: StatusLevel) => s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : 2;
+        return score(a.status) - score(b.status);
+    });
+}, [baseFeedback, dismissedFeedback, pinnedFeedback, feedbackStatusFilter]);
 
-// 4. Sorted & Filtered Metrics for Grid
+
+// 5. Sorted & Filtered Metrics for Grid
 const gridMetrics = useMemo(() => {
 let result = metrics.filter(m => m.active);
 
@@ -318,6 +332,27 @@ const restoreFeedback = () => {
 setDismissedFeedback([]);
 };
 
+const handleDismissAllVisible = () => {
+    // Dismiss all currently displayed items that are NOT pinned
+    const toDismiss = displayedFeedback
+        .filter(item => !pinnedFeedback.includes(item.metricId))
+        .map(item => item.metricId);
+    
+    if (toDismiss.length > 0) {
+        if (confirm(`Dismiss ${toDismiss.length} visible notices? Pinned items will remain.`)) {
+            setDismissedFeedback(prev => [...prev, ...toDismiss]);
+        }
+    } else {
+        alert("No unpinned notices to dismiss in current view.");
+    }
+};
+
+const handleMetricClick = (id: string) => {
+    setHistorySelectedMetrics([id]);
+    setView('history');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
 // Helper for Radar Chart data
 const radarValues = useMemo(() => {
 const vals: MetricValues = {};
@@ -397,22 +432,72 @@ Log First Entry
 
 {/* Facts & Feedback */}
 <div className="lg:col-span-2 space-y-4">
-<div className="flex justify-between items-center">
+<div className="flex flex-wrap justify-between items-center gap-3">
 <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
 <Quote className="w-5 h-5 text-indigo-500" />
 Analysis & Evidence
 </h3>
-{dismissedFeedback.length > 0 && (
-<button onClick={restoreFeedback} className="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1">
-<Eye className="w-3 h-3" /> Show Dismissed ({dismissedFeedback.length})
-</button>
-)}
+
+<div className="flex items-center gap-2">
+    {/* Feedback Filters */}
+    <div className="flex bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm">
+        <button 
+            onClick={() => setFeedbackStatusFilter('all')}
+            className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${feedbackStatusFilter === 'all' ? 'bg-slate-100 text-slate-700' : 'text-slate-400 hover:text-slate-600'}`}
+        >
+            All
+        </button>
+        <button 
+            onClick={() => setFeedbackStatusFilter('good')}
+            className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${feedbackStatusFilter === 'good' ? 'bg-green-100 text-green-700' : 'text-slate-400 hover:text-green-600'}`}
+        >
+            Good
+        </button>
+        <button 
+            onClick={() => setFeedbackStatusFilter('fair')}
+            className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${feedbackStatusFilter === 'fair' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-400 hover:text-yellow-600'}`}
+        >
+            Fair
+        </button>
+        <button 
+            onClick={() => setFeedbackStatusFilter('poor')}
+            className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${feedbackStatusFilter === 'poor' ? 'bg-red-100 text-red-700' : 'text-slate-400 hover:text-red-600'}`}
+        >
+            Poor
+        </button>
+    </div>
+
+    {/* Actions */}
+    <div className="flex gap-2">
+        <button 
+            onClick={handleDismissAllVisible}
+            className="text-xs bg-white border border-slate-200 text-slate-500 hover:text-red-600 px-2 py-1.5 rounded-lg flex items-center gap-1 shadow-sm transition-colors"
+            title="Dismiss all visible items except pinned"
+        >
+            <CheckCircle2 className="w-3.5 h-3.5" /> Dismiss
+        </button>
+        {dismissedFeedback.length > 0 && (
+        <button onClick={restoreFeedback} className="text-xs text-slate-400 hover:text-indigo-600 px-2 flex items-center gap-1">
+        <Eye className="w-3 h-3" /> Show All
+        </button>
+        )}
+    </div>
+</div>
 </div>
 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-{feedback.length === 0 ? (
-<p className="text-slate-400 italic">No feedback available. Add more metrics to your Spider Graph or restore dismissed items.</p>
+{displayedFeedback.length === 0 ? (
+<div className="text-center py-8 bg-white border border-dashed border-slate-200 rounded-xl">
+    <p className="text-slate-400 text-sm italic">
+        {feedbackStatusFilter !== 'all' ? `No '${feedbackStatusFilter}' items found.` : "All caught up! No notices."}
+    </p>
+    {dismissedFeedback.length > 0 && (
+        <button onClick={restoreFeedback} className="mt-2 text-xs text-indigo-500 hover:underline">
+            View {dismissedFeedback.length} dismissed items
+        </button>
+    )}
+</div>
 ) : (
-feedback.map(item => (
+displayedFeedback.map(item => (
 <div key={item.metricId} className={`relative p-4 rounded-lg border-l-4 group transition-all ${
 item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' :
 item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'
@@ -501,6 +586,7 @@ config={m}
 value={value}
 status={status}
 timestamp={timestamp}
+onClick={() => handleMetricClick(m.id)}
 />
 );
 })}
@@ -612,7 +698,12 @@ Save Entry
 <div className="flex justify-between items-center">
 <h2 className="text-2xl font-bold text-slate-900">Progress History</h2>
 </div>
-<HistoryView entries={processedEntries} metrics={metrics.filter(m => m.active)} />
+<HistoryView 
+    entries={processedEntries} 
+    metrics={metrics.filter(m => m.active)} 
+    selectedMetrics={historySelectedMetrics}
+    onSelectionChange={setHistorySelectedMetrics}
+/>
 </div>
 )}
 

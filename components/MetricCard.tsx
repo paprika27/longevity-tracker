@@ -7,9 +7,10 @@ config: MetricConfig;
 value: number | null;
 status: StatusLevel;
 timestamp?: string;
+onClick?: () => void;
 }
 
-export const MetricCard: React.FC<MetricCardProps> = ({ config, value, status, timestamp }) => {
+export const MetricCard: React.FC<MetricCardProps> = ({ config, value, status, timestamp, onClick }) => {
 const getIcon = () => {
 switch (status) {
 case StatusLevel.GOOD: return <Smile className="w-6 h-6 text-green-500" />;
@@ -63,7 +64,10 @@ percentage = 50;
 }
 
 return (
-<div className={`p-4 rounded-xl border ${getBorderColor()} shadow-sm transition-all duration-200 hover:shadow-md`}>
+<div 
+  onClick={onClick}
+  className={`p-4 rounded-xl border ${getBorderColor()} shadow-sm transition-all duration-200 hover:shadow-md ${onClick ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
+>
 <div className="flex justify-between items-start mb-2">
 <div>
 <h3 className="text-sm font-semibold text-slate-700">{config.name}</h3>
