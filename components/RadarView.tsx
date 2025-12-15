@@ -49,7 +49,7 @@ export const RadarView: React.FC<RadarViewProps> = ({ metrics, values }) => {
       return (
           <div className="w-full h-[400px] bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center text-center">
               <p className="text-slate-500 mb-2">Not enough metrics for Spider Chart.</p>
-              <p className="text-xs text-slate-400">Enable at least 3 metrics in Settings > Spider.</p>
+              <p className="text-xs text-slate-400">Enable at least 3 metrics in Settings / Spider.</p>
           </div>
       );
   }
