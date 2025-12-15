@@ -43,6 +43,8 @@ const App: React.FC = () => {
 
   const refreshData = () => {
     setEntries(db.getEntries());
+    setMetrics(db.getMetrics());
+    setCategories(db.getCategories());
   };
 
   const handleMetricsUpdate = (updatedMetrics: MetricConfig[]) => {
@@ -178,7 +180,7 @@ const App: React.FC = () => {
         {view === 'dashboard' && (
             <div className="space-y-8">
                 <div className="flex justify-end">
-                    <DataControls entries={entries} onImportComplete={refreshData} />
+                    <DataControls entries={entries} metrics={metrics} onImportComplete={refreshData} />
                 </div>
 
                 {!latestEntry ? (
