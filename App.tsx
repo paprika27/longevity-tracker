@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { METRICS } from './constants';
-import { MetricValues, LogEntry, StatusLevel, FeedbackItem } from './types';
+import { MetricValues, LogEntry, StatusLevel, FeedbackItem, MetricConfig } from './types';
 import * as db from './services/storageService';
 import { MetricCard } from './components/MetricCard';
 import { RadarView } from './components/RadarView';
 import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList } from 'lucide-react';
+import { MetricManager } from './components/MetricManager';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3 } from 'lucide-react';
 
 // Helper to determine status
 const getStatus = (val: number, range: [number, number]): StatusLevel => {
@@ -23,30 +23,58 @@ const getStatus = (val: number, range: [number, number]): StatusLevel => {
 };
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'dashboard' | 'regimen' | 'entry' | 'history'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'regimen' | 'entry' | 'history' | 'settings'>('dashboard');
   const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [metrics, setMetrics] = useState<MetricConfig[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [newEntryValues, setNewEntryValues] = useState<MetricValues>({});
   
   // Form Categories
-  const [activeFormCategory, setActiveFormCategory] = useState<'daily' | 'weekly' | 'clinical'>('daily');
+  const [activeFormCategory, setActiveFormCategory] = useState<string>('daily');
 
   // Load data on mount
   useEffect(() => {
     setEntries(db.getEntries());
+    setMetrics(db.getMetrics());
+    const cats = db.getCategories();
+    setCategories(cats);
+    if (cats.length > 0) setActiveFormCategory(cats[0]);
   }, []);
 
   const refreshData = () => {
     setEntries(db.getEntries());
   };
 
-  // Derived state
-  const latestEntry = useMemo(() => entries.length > 0 ? entries[entries.length - 1] : null, [entries]);
+  const handleMetricsUpdate = (updatedMetrics: MetricConfig[]) => {
+      setMetrics(updatedMetrics);
+  };
+
+  // --- DERIVED STATE ---
   
-  // Feedback Logic
+  // 1. Calculate BMI for all entries and inject it
+  const processedEntries = useMemo(() => {
+      return entries.map(entry => {
+          const weight = entry.values['weight'];
+          const height = entry.values['height'];
+          const newValues = { ...entry.values };
+          
+          if (weight && height) {
+              // Calculate BMI: kg / m^2
+              const heightM = height / 100;
+              const bmi = weight / (heightM * heightM);
+              newValues['bmi'] = parseFloat(bmi.toFixed(1));
+          }
+          return { ...entry, values: newValues };
+      });
+  }, [entries]);
+
+  const latestEntry = useMemo(() => processedEntries.length > 0 ? processedEntries[processedEntries.length - 1] : null, [processedEntries]);
+  
+  // 2. Feedback Logic
   const feedback: FeedbackItem[] = useMemo(() => {
     if (!latestEntry) return [];
     const items: FeedbackItem[] = [];
-    METRICS.forEach(m => {
+    metrics.filter(m => m.active).forEach(m => {
         const val = latestEntry.values[m.id];
         if (val !== null && val !== undefined) {
             const status = getStatus(val, m.range);
@@ -73,7 +101,7 @@ const App: React.FC = () => {
         const score = (s: StatusLevel) => s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : 2;
         return score(a.status) - score(b.status);
     });
-  }, [latestEntry]);
+  }, [latestEntry, metrics]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,25 +142,31 @@ const App: React.FC = () => {
                 onClick={() => setView('dashboard')}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'dashboard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
              >
-                <div className="flex items-center gap-1.5"><LayoutDashboard className="w-4 h-4"/> Dashboard</div>
+                <div className="flex items-center gap-1.5"><LayoutDashboard className="w-4 h-4"/> <span className="hidden xs:inline">Dashboard</span></div>
              </button>
              <button 
                 onClick={() => setView('regimen')}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'regimen' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
              >
-                <div className="flex items-center gap-1.5"><ClipboardList className="w-4 h-4"/> Regimen</div>
+                <div className="flex items-center gap-1.5"><ClipboardList className="w-4 h-4"/> <span className="hidden xs:inline">Regimen</span></div>
              </button>
              <button 
                 onClick={() => setView('history')}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'history' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
              >
-                <div className="flex items-center gap-1.5"><History className="w-4 h-4"/> Trends</div>
+                <div className="flex items-center gap-1.5"><History className="w-4 h-4"/> <span className="hidden xs:inline">Trends</span></div>
              </button>
              <button 
                 onClick={() => setView('entry')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'entry' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'entry' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
              >
-                <div className="flex items-center gap-1.5"><PlusCircle className="w-4 h-4"/> Log Data</div>
+                <div className="flex items-center gap-1.5"><PlusCircle className="w-4 h-4"/> <span className="hidden xs:inline">Log Data</span></div>
+             </button>
+             <button 
+                onClick={() => setView('settings')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${view === 'settings' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+             >
+                <div className="flex items-center gap-1.5"><Settings className="w-4 h-4"/> <span className="hidden xs:inline">Settings</span></div>
              </button>
           </nav>
         </div>
@@ -161,7 +195,7 @@ const App: React.FC = () => {
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                              {/* Spider Diagram */}
                              <div className="lg:col-span-1">
-                                <RadarView metrics={METRICS} values={latestEntry.values} />
+                                <RadarView metrics={metrics} values={latestEntry.values} />
                              </div>
                              
                              {/* Facts & Feedback */}
@@ -171,19 +205,23 @@ const App: React.FC = () => {
                                     Analysis & Evidence
                                 </h3>
                                 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {feedback.map(item => (
-                                        <div key={item.metricId} className={`p-4 rounded-lg border-l-4 ${
-                                            item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' : 
-                                            item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'
-                                        }`}>
-                                            <div className="flex justify-between items-start">
-                                                <h4 className="font-semibold text-slate-800">{item.metricName}</h4>
-                                                <span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{item.value}</span>
+                                    {feedback.length === 0 ? (
+                                        <p className="text-slate-400 italic">Add more metrics to your Spider Graph in Settings to see analysis here.</p>
+                                    ) : (
+                                        feedback.map(item => (
+                                            <div key={item.metricId} className={`p-4 rounded-lg border-l-4 ${
+                                                item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' : 
+                                                item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'
+                                            }`}>
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className="font-semibold text-slate-800">{item.metricName}</h4>
+                                                    <span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{item.value}</span>
+                                                </div>
+                                                <p className="text-sm text-slate-700 mt-1">{item.message}</p>
+                                                <p className="text-xs text-slate-500 mt-2 italic border-t border-black/5 pt-2">"{item.citation}"</p>
                                             </div>
-                                            <p className="text-sm text-slate-700 mt-1">{item.message}</p>
-                                            <p className="text-xs text-slate-500 mt-2 italic border-t border-black/5 pt-2">"{item.citation}"</p>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                              </div>
                         </div>
@@ -192,7 +230,7 @@ const App: React.FC = () => {
                         <div>
                             <h3 className="text-lg font-semibold text-slate-700 mb-4">Detailed Metrics</h3>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                {METRICS.map(m => (
+                                {metrics.filter(m => m.active).map(m => (
                                     <MetricCard 
                                         key={m.id} 
                                         config={m} 
@@ -217,9 +255,17 @@ const App: React.FC = () => {
             <div className="max-w-3xl mx-auto">
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="bg-slate-50 border-b border-slate-200 px-6 py-4">
-                        <h2 className="text-xl font-bold text-slate-900">Log Metrics</h2>
-                        <div className="flex space-x-1 sm:space-x-4 mt-4 overflow-x-auto">
-                            {(['daily', 'weekly', 'clinical'] as const).map(cat => (
+                        <div className="flex justify-between items-center">
+                             <h2 className="text-xl font-bold text-slate-900">Log Metrics</h2>
+                             <button 
+                                onClick={() => setView('settings')}
+                                className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
+                             >
+                                <Edit3 className="w-3 h-3" /> Customize
+                             </button>
+                        </div>
+                        <div className="flex space-x-1 sm:space-x-4 mt-4 overflow-x-auto pb-2 sm:pb-0">
+                            {categories.map(cat => (
                                 <button
                                     key={cat}
                                     onClick={() => setActiveFormCategory(cat)}
@@ -229,7 +275,7 @@ const App: React.FC = () => {
                                         : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                                     }`}
                                 >
-                                    {cat} Check
+                                    {cat}
                                 </button>
                             ))}
                         </div>
@@ -237,7 +283,7 @@ const App: React.FC = () => {
 
                     <form onSubmit={handleSave} className="p-6 sm:p-8">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
-                            {METRICS.filter(m => m.category === activeFormCategory).map(m => (
+                            {metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).map(m => (
                                 <div key={m.id}>
                                     <label htmlFor={m.id} className="block text-sm font-semibold text-slate-800 mb-1.5">
                                         {m.name} <span className="text-slate-500 font-normal">({m.unit})</span>
@@ -255,8 +301,17 @@ const App: React.FC = () => {
                             ))}
                         </div>
                         
-                        {METRICS.filter(m => m.category === activeFormCategory).length === 0 && (
-                            <p className="text-center text-slate-500 py-8 italic">No metrics defined for this category yet.</p>
+                        {metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).length === 0 && (
+                            <div className="text-center py-8">
+                                <p className="text-slate-500 italic mb-4">No active metrics found for this form.</p>
+                                <button 
+                                    type="button"
+                                    onClick={() => setView('settings')}
+                                    className="text-sm bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-100 transition-colors border border-indigo-100"
+                                >
+                                    Select Metrics for {activeFormCategory}
+                                </button>
+                            </div>
                         )}
 
                         <div className="pt-6 flex items-center justify-end gap-3 border-t border-slate-100 mt-8">
@@ -272,7 +327,7 @@ const App: React.FC = () => {
                                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm"
                             >
                                 <Save className="w-4 h-4" />
-                                Save {activeFormCategory.charAt(0).toUpperCase() + activeFormCategory.slice(1)} Log
+                                Save Entry
                             </button>
                         </div>
                     </form>
@@ -286,7 +341,17 @@ const App: React.FC = () => {
                 <div className="flex justify-between items-center">
                      <h2 className="text-2xl font-bold text-slate-900">Progress History</h2>
                 </div>
-                <HistoryView entries={entries} metrics={METRICS} />
+                <HistoryView entries={processedEntries} metrics={metrics.filter(m => m.active)} />
+            </div>
+        )}
+
+        {/* VIEW: SETTINGS */}
+        {view === 'settings' && (
+            <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold text-slate-900">Settings & Metrics</h2>
+                </div>
+                <MetricManager metrics={metrics} onUpdate={handleMetricsUpdate} />
             </div>
         )}
       </main>

@@ -1,6 +1,33 @@
 import { MetricConfig } from './types';
 
-export const METRICS: MetricConfig[] = [
+export const DEFAULT_REGIMEN = `## Systems Engineering Approach
+
+Treating the body as a biological system. Optimization of output (performance/longevity) while minimizing temporal input (Minimum Effective Dose).
+
+### Weekly Schedule
+
+*   **Monday**: Exercise Snacking + Active Recovery (Low)
+*   **Tuesday**: Session A: Concept2 Intervals (High)
+*   **Wednesday**: Session B: Ring Strength & Structure (Med)
+*   **Thursday**: Exercise Snacking + 15 min Yoga (Low)
+*   **Friday**: Session C: Run / Fartlek (20-30m) (Med)
+*   **Weekend**: Family Active Recovery (Zone 2) (Rec)
+
+### Exercise Snacking (3-5x Daily)
+
+1.  **The Hang**: 30-60s on Rings. Decompresses spine, builds grip.
+2.  **Goblet Squat**: 10 slow reps @ 7.5kg. Hip mobility.
+3.  **Ring Support Hold**: 10-20s top of dip. Core stabilization.
+
+### System Notes
+
+*   **Cardiorespiratory**: Addressed via VO2max intervals (Concept2).
+*   **Sarcopenia**: Addressed via Ring Training. Unstable loads force higher recruitment.
+*   **Fueling**: High Leucine source immediately after sessions A & B to trigger mTOR.`;
+
+export const DEFAULT_CATEGORIES = ['daily', 'weekly', 'clinical'];
+
+export const DEFAULT_METRICS: MetricConfig[] = [
   // DAILY METRICS
   {
     id: "sleep",
@@ -10,7 +37,9 @@ export const METRICS: MetricConfig[] = [
     fact: "7–8 hours of sleep/night minimizes mortality risk.",
     citation: "Gallicchio, 2009",
     step: 0.5,
-    category: 'daily'
+    category: 'daily',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "rhr",
@@ -20,7 +49,9 @@ export const METRICS: MetricConfig[] = [
     fact: "RHR 50–70 bpm minimizes mortality risk.",
     citation: "Jensen, 2013",
     step: 1,
-    category: 'daily'
+    category: 'daily',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "snacks",
@@ -30,7 +61,9 @@ export const METRICS: MetricConfig[] = [
     fact: "Frequent movement breaks improve metabolic flexibility.",
     citation: "Biological Systems Eng",
     step: 1,
-    category: 'daily'
+    category: 'daily',
+    active: true,
+    includeInSpider: false
   },
   {
     id: "protein",
@@ -40,7 +73,9 @@ export const METRICS: MetricConfig[] = [
     fact: "Adequate leucine is the bottleneck for muscle repair in your 30s.",
     citation: "Nutritional Systems",
     step: 5,
-    category: 'daily'
+    category: 'daily',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "coffee",
@@ -50,7 +85,9 @@ export const METRICS: MetricConfig[] = [
     fact: "100–400 mg caffeine/day reduces mortality by 10–15%.",
     citation: "Freedman, 2012",
     step: 10,
-    category: 'daily'
+    category: 'daily',
+    active: true,
+    includeInSpider: false
   },
   {
     id: "alcohol",
@@ -60,7 +97,9 @@ export const METRICS: MetricConfig[] = [
     fact: "0–7 drinks/week minimizes risk, with 0–3 being ideal.",
     citation: "Wood, 2018",
     step: 1,
-    category: 'daily'
+    category: 'daily',
+    active: true,
+    includeInSpider: false
   },
 
   // WEEKLY METRICS
@@ -72,7 +111,9 @@ export const METRICS: MetricConfig[] = [
     fact: "High intensity intervals on the rower drive VO2 max expansion.",
     citation: "System A: The Engine",
     step: 5,
-    category: 'weekly'
+    category: 'weekly',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "running",
@@ -82,7 +123,9 @@ export const METRICS: MetricConfig[] = [
     fact: "Impact loading is crucial for maintaining bone density.",
     citation: "System C: Hybrid",
     step: 5,
-    category: 'weekly'
+    category: 'weekly',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "strength",
@@ -92,7 +135,9 @@ export const METRICS: MetricConfig[] = [
     fact: "Ring instability creates higher systemic load for neuromuscular control.",
     citation: "System B: Structure",
     step: 1,
-    category: 'weekly'
+    category: 'weekly',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "social",
@@ -102,10 +147,37 @@ export const METRICS: MetricConfig[] = [
     fact: "3–5 meaningful social interactions/week cut mortality risk by ~50%.",
     citation: "Holt-Lunstad, 2010",
     step: 1,
-    category: 'weekly'
+    category: 'weekly',
+    active: true,
+    includeInSpider: true
   },
 
   // CLINICAL / PERIODIC METRICS
+  {
+    id: "weight",
+    name: "Weight",
+    range: [50, 100],
+    unit: "kg",
+    fact: "Maintenance of healthy body composition.",
+    citation: "General",
+    step: 0.1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+  {
+    id: "height",
+    name: "Height",
+    range: [150, 200],
+    unit: "cm",
+    fact: "Used for BMI calculation.",
+    citation: "General",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+  // Calculated Metrics (Not in inputs)
   {
     id: "bmi",
     name: "BMI",
@@ -114,7 +186,10 @@ export const METRICS: MetricConfig[] = [
     fact: "Keeping BMI 18.5–24.9 lowers mortality risk by up to 30%.",
     citation: "Di Angelantonio, 2016",
     step: 0.1,
-    category: 'clinical'
+    category: 'clinical',
+    active: true,
+    includeInSpider: true,
+    isCalculated: true
   },
   {
     id: "bp_systolic",
@@ -124,7 +199,9 @@ export const METRICS: MetricConfig[] = [
     fact: "Blood pressure <120/80 mmHg cuts cardiovascular mortality by 25%.",
     citation: "SPRINT, 2015",
     step: 1,
-    category: 'clinical'
+    category: 'clinical',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "ldl",
@@ -134,7 +211,9 @@ export const METRICS: MetricConfig[] = [
     fact: "LDL <100 mg/dL reduces cardiovascular risk by 20–30%.",
     citation: "Silverman, 2017",
     step: 1,
-    category: 'clinical'
+    category: 'clinical',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "hdl",
@@ -144,7 +223,9 @@ export const METRICS: MetricConfig[] = [
     fact: "HDL >40 mg/dL supports heart health.",
     citation: "Silverman, 2017",
     step: 1,
-    category: 'clinical'
+    category: 'clinical',
+    active: true,
+    includeInSpider: true
   },
   {
     id: "glucose",
@@ -154,6 +235,8 @@ export const METRICS: MetricConfig[] = [
     fact: "Glucose <100 mg/dL lowers diabetes and heart risk by 15–20%.",
     citation: "Selvin, 2010",
     step: 1,
-    category: 'clinical'
+    category: 'clinical',
+    active: true,
+    includeInSpider: true
   }
 ];

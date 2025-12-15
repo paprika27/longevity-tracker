@@ -6,7 +6,10 @@ export interface MetricConfig {
   fact: string;
   citation: string;
   step: number; // For input validation/UI
-  category: 'daily' | 'weekly' | 'clinical';
+  category: string; // Changed from enum to string to allow custom categories
+  active: boolean;
+  includeInSpider: boolean;
+  isCalculated?: boolean; // New flag for metrics like BMI that are derived
 }
 
 // Map of metric ID to value (number) or null if not recorded
@@ -34,4 +37,7 @@ export interface FeedbackItem {
   status: StatusLevel;
   message: string;
   citation: string;
+}
+export interface RegimenData {
+  text: string;
 }

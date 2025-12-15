@@ -1,110 +1,112 @@
-import React from 'react';
-import { Dumbbell, Wind, Timer, Utensils, Zap, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Pencil, Save, X } from 'lucide-react';
+import * as db from '../services/storageService';
 
 export const RegimenView: React.FC = () => {
+  const [content, setContent] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+
+  useEffect(() => {
+    setContent(db.getRegimen());
+  }, []);
+
+  const handleEdit = () => {
+    setEditValue(content);
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    db.saveRegimen(editValue);
+    setContent(editValue);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+  };
+
+  // Simple Markdown Renderer (Headers, Bold, Lists)
+  const renderMarkdown = (text: string) => {
+      const lines = text.split('\n');
+      return lines.map((line, idx) => {
+          if (line.startsWith('### ')) {
+              return <h3 key={idx} className="text-lg font-bold text-slate-800 mt-6 mb-3">{line.replace('### ', '')}</h3>;
+          }
+          if (line.startsWith('## ')) {
+              return <h2 key={idx} className="text-xl font-bold text-slate-900 mt-8 mb-4 border-b border-slate-200 pb-2">{line.replace('## ', '')}</h2>;
+          }
+          if (line.startsWith('* ')) {
+              const content = line.replace('* ', '');
+              // Handle bolding within list items
+              const parts = content.split('**');
+              return (
+                <li key={idx} className="ml-4 list-disc text-slate-700 mb-1 pl-1">
+                    {parts.map((part, i) => i % 2 === 1 ? <strong key={i} className="font-semibold text-slate-900">{part}</strong> : part)}
+                </li>
+              );
+          }
+           if (line.match(/^\d+\./)) {
+               // Numbered list
+               const content = line.replace(/^\d+\.\s/, '');
+               const parts = content.split('**');
+               return (
+                  <div key={idx} className="ml-4 flex gap-2 text-slate-700 mb-1">
+                      <span className="font-mono text-slate-400 font-bold">{line.match(/^\d+\./)?.[0]}</span>
+                      <span>
+                        {parts.map((part, i) => i % 2 === 1 ? <strong key={i} className="font-semibold text-slate-900">{part}</strong> : part)}
+                      </span>
+                  </div>
+               );
+           }
+          
+          if (line.trim() === '') return <div key={idx} className="h-2"></div>;
+          
+          return <p key={idx} className="text-slate-700 mb-2 leading-relaxed">{line}</p>;
+      });
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Intro */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-8 text-white shadow-lg">
-        <h2 className="text-2xl font-bold mb-2">Systems Engineering Approach</h2>
-        <p className="text-slate-300 leading-relaxed max-w-3xl">
-          Treating the body as a biological system. Optimization of output (performance/longevity) 
-          while minimizing temporal input (Minimum Effective Dose).
-        </p>
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        {isEditing ? (
+            <div className="flex gap-2">
+                <button onClick={handleCancel} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                    <X className="w-4 h-4" /> Cancel
+                </button>
+                <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 shadow-sm transition-colors">
+                    <Save className="w-4 h-4" /> Save Protocol
+                </button>
+            </div>
+        ) : (
+            <button onClick={handleEdit} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
+                <Pencil className="w-4 h-4" /> Edit Regimen
+            </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* The Protocol */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-indigo-600" />
-            Weekly Schedule
-          </h3>
-          <div className="space-y-4">
-            {[
-              { day: "Monday", activity: "Exercise Snacking + Active Recovery", type: "Low" },
-              { day: "Tuesday", activity: "Session A: Concept2 Intervals", type: "High" },
-              { day: "Wednesday", activity: "Session B: Ring Strength & Structure", type: "Med" },
-              { day: "Thursday", activity: "Exercise Snacking + 15 min Yoga", type: "Low" },
-              { day: "Friday", activity: "Session C: Run / Fartlek (20-30m)", type: "Med" },
-              { day: "Weekend", activity: "Family Active Recovery (Zone 2)", type: "Rec" },
-            ].map((item, i) => (
-              <div key={i} className="flex justify-between items-center border-b border-slate-100 last:border-0 pb-2 last:pb-0">
-                <span className="font-medium text-slate-700 w-24">{item.day}</span>
-                <span className="text-sm text-slate-600 flex-1">{item.activity}</span>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium
-                  ${item.type === 'High' ? 'bg-red-100 text-red-700' : 
-                    item.type === 'Med' ? 'bg-indigo-100 text-indigo-700' : 
-                    'bg-green-100 text-green-700'}`}>
-                  {item.type}
-                </span>
-              </div>
-            ))}
+      {isEditing ? (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+              <textarea 
+                className="w-full h-[600px] p-4 font-mono text-sm text-slate-900 bg-slate-50 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                placeholder="Enter your regimen in Markdown format..."
+              />
+              <p className="text-xs text-slate-500 mt-2 flex gap-4">
+                  <span>## Header 2</span>
+                  <span>### Header 3</span>
+                  <span>* Bullet point</span>
+                  <span>**Bold Text**</span>
+              </p>
           </div>
-        </div>
-
-        {/* The Snacks */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-500" />
-            Exercise Snacking
-          </h3>
-          <p className="text-sm text-slate-500 mb-4">
-            Perform 3-5 times daily. "Grease the Groove"—frequent, non-fatiguing activation.
-          </p>
-          <ul className="space-y-3">
-            <li className="flex items-start gap-3">
-              <div className="bg-slate-100 p-2 rounded-lg text-slate-600"><Dumbbell className="w-4 h-4" /></div>
-              <div>
-                <h4 className="font-semibold text-slate-700">The Hang</h4>
-                <p className="text-xs text-slate-500">30-60s on Rings. Decompresses spine, builds grip.</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <div className="bg-slate-100 p-2 rounded-lg text-slate-600"><Timer className="w-4 h-4" /></div>
-              <div>
-                <h4 className="font-semibold text-slate-700">Goblet Squat</h4>
-                <p className="text-xs text-slate-500">10 slow reps @ 7.5kg. Hip mobility.</p>
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <div className="bg-slate-100 p-2 rounded-lg text-slate-600"><Wind className="w-4 h-4" /></div>
-              <div>
-                <h4 className="font-semibold text-slate-700">Ring Support Hold</h4>
-                <p className="text-xs text-slate-500">10-20s top of dip. Core stabilization.</p>
-              </div>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Systems Engineering Notes */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-           <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-             <Wind className="w-4 h-4 text-blue-500"/> Cardiorespiratory
-           </h4>
-           <p className="text-xs text-slate-600">
-             Addressed via VO2max intervals (Concept2). The "Ceiling" of your longevity.
-           </p>
-        </div>
-        <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-           <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-             <Dumbbell className="w-4 h-4 text-purple-500"/> Sarcopenia
-           </h4>
-           <p className="text-xs text-slate-600">
-             Addressed via Ring Training. Unstable loads force higher recruitment than machines.
-           </p>
-        </div>
-        <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-           <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-             <Utensils className="w-4 h-4 text-green-500"/> Fueling
-           </h4>
-           <p className="text-xs text-slate-600">
-             Vegetarian optimization: High Leucine source immediately after sessions A & B to trigger mTOR.
-           </p>
-        </div>
-      </div>
+      ) : (
+          <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
+             <div className="max-w-4xl mx-auto">
+                {renderMarkdown(content)}
+             </div>
+          </div>
+      )}
     </div>
   );
 };

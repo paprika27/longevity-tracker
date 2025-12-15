@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Download, Upload, Loader2 } from 'lucide-react';
-import { LogEntry } from '../types';
+import { LogEntry, MetricConfig } from '../types';
 import * as db from '../services/storageService';
 
 interface DataControlsProps {
@@ -67,9 +67,40 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, onImportCom
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
+                // 1. Scan for new metrics
+                const existingMetrics = db.getMetrics();
+                const existingIds = new Set(existingMetrics.map(m => m.id));
+                const newMetrics: MetricConfig[] = [];
+
+                if (jsonData.length > 0) {
+                    const keys = Object.keys(jsonData[0]);
+                    keys.forEach(key => {
+                        if (key !== 'Timestamp' && key !== 'Date' && !existingIds.has(key)) {
+                            // Found a new metric column
+                            newMetrics.push({
+                                id: key,
+                                name: key.charAt(0).toUpperCase() + key.slice(1),
+                                range: [0, 100], // Default placeholder
+                                unit: '',
+                                fact: 'Imported from file',
+                                citation: 'Import',
+                                step: 1,
+                                category: 'imported',
+                                active: true,
+                                includeInSpider: false
+                            });
+                        }
+                    });
+                }
+
+                if (newMetrics.length > 0) {
+                    db.saveMetrics([...existingMetrics, ...newMetrics]);
+                    alert(`Discovered ${newMetrics.length} new metrics in file. They have been added to Settings.`);
+                }
+
+                // 2. Import Entries
                 let importedCount = 0;
                 jsonData.forEach(row => {
-                    // Reconstruct entry
                     const values: any = {};
                     Object.keys(row).forEach(key => {
                     if (key !== 'Timestamp' && key !== 'Date') {
@@ -87,7 +118,7 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, onImportCom
                 onImportComplete();
                 } catch (err) {
                 console.error(err);
-                alert("Failed to parse file. Please ensure it is a valid Excel file exported from this app.");
+                alert("Failed to parse file. Please ensure it is a valid Excel file.");
                 } finally {
                     setLoading(false);
                 }
