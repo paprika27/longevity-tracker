@@ -52,3 +52,15 @@ export interface AppSettings {
   dateFormat: DateFormat;
   timeFormat: TimeFormat;
 }
+
+export interface MetricStatusData {
+  value: number | null;
+  timestamp?: string;
+  status: StatusLevel;
+  streak?: number;
+  weeklyProgress?: {
+    current: number;
+    target: number;
+    percent: number;
+  };
+}

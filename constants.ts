@@ -26,7 +26,7 @@ Treating the body as a biological system. Optimization of output (performance/lo
 *   **Sarcopenia**: Addressed via Ring Training. Unstable loads force higher recruitment.
 *   **Fueling**: High Leucine source immediately after sessions A & B to trigger mTOR.`;
 
-export const DEFAULT_CATEGORIES = ['daily', 'weekly', 'clinical'];
+export const DEFAULT_CATEGORIES = ['daily', 'inputs', 'weekly', 'clinical'];
 
 export const DEFAULT_SETTINGS: AppSettings = {
   dateFormat: 'YYYY-MM-DD',
@@ -109,10 +109,62 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     includeInSpider: false
   },
 
-  // WEEKLY METRICS
+  // INPUTS (Logs that feed into calculated metrics)
   {
     id: "rowing",
-    name: "Rowing",
+    name: "Rowing Session",
+    range: [0, 60],
+    unit: "min",
+    fact: "Log duration of rowing session.",
+    citation: "Input",
+    step: 1,
+    category: 'inputs',
+    active: true,
+    includeInSpider: false,
+    isTimeBased: true
+  },
+  {
+    id: "running",
+    name: "Running Session",
+    range: [0, 120],
+    unit: "min",
+    fact: "Log duration of running session.",
+    citation: "Input",
+    step: 1,
+    category: 'inputs',
+    active: true,
+    includeInSpider: false,
+    isTimeBased: true
+  },
+  {
+    id: "strength",
+    name: "Ring Training",
+    range: [0, 1],
+    unit: "session",
+    fact: "Log 1 for session completed.",
+    citation: "Input",
+    step: 1,
+    category: 'inputs',
+    active: true,
+    includeInSpider: false
+  },
+  {
+    id: "social",
+    name: "Social Interaction",
+    range: [0, 5],
+    unit: "count",
+    fact: "Log count of meaningful interactions.",
+    citation: "Input",
+    step: 1,
+    category: 'inputs',
+    active: true,
+    includeInSpider: false
+  },
+
+  // WEEKLY METRICS (Calculated Counters)
+  {
+    id: "rowing_weekly",
+    name: "Rowing Volume",
     range: [30, 90],
     unit: "min/week",
     fact: "High intensity intervals on the rower drive VO2 max expansion.",
@@ -121,11 +173,12 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     category: 'weekly',
     active: true,
     includeInSpider: true,
-    isTimeBased: true
+    isCalculated: true,
+    formula: "lib.sum('rowing', 'week')"
   },
   {
-    id: "running",
-    name: "Running",
+    id: "running_weekly",
+    name: "Running Volume",
     range: [60, 120],
     unit: "min/week",
     fact: "Impact loading is crucial for maintaining bone density.",
@@ -134,11 +187,12 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     category: 'weekly',
     active: true,
     includeInSpider: true,
-    isTimeBased: true
+    isCalculated: true,
+    formula: "lib.sum('running', 'week')"
   },
   {
-    id: "strength",
-    name: "Ring Training",
+    id: "strength_weekly",
+    name: "Strength Frequency",
     range: [2, 3],
     unit: "sessions/week",
     fact: "Ring instability creates higher systemic load for neuromuscular control.",
@@ -146,11 +200,13 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     step: 1,
     category: 'weekly',
     active: true,
-    includeInSpider: true
+    includeInSpider: true,
+    isCalculated: true,
+    formula: "lib.sum('strength', 'week')"
   },
   {
-    id: "social",
-    name: "Social Interactions",
+    id: "social_weekly",
+    name: "Social Frequency",
     range: [3, 5],
     unit: "per week",
     fact: "3–5 meaningful social interactions/week cut mortality risk by ~50%.",
@@ -158,7 +214,9 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     step: 1,
     category: 'weekly',
     active: true,
-    includeInSpider: true
+    includeInSpider: true,
+    isCalculated: true,
+    formula: "lib.sum('social', 'week')"
   },
 
   // CLINICAL / PERIODIC METRICS
