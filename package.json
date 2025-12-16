@@ -2,10 +2,11 @@
   "name": "longevity-tracker",
   "version": "1.0.0",
   "description": "A privacy-focused longevity tracking application",
-  "main": "index.tsx",
+  "type": "module",
   "scripts": {
-    "start": "npx serve .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "lucide-react": "^0.294.0",
@@ -17,6 +18,8 @@
   "devDependencies": {
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "typescript": "^4.9.5"
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
   }
 }
