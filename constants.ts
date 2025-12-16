@@ -44,9 +44,9 @@ export const DEFAULT_METRICS: MetricConfig[] = [
   {
     id: "rhr",
     name: "Resting HR",
-    range: [50, 70],
+    range: [45, 60],
     unit: "bpm",
-    fact: "RHR 50–70 bpm minimizes mortality risk.",
+    fact: "Lower RHR (within limits) correlates with higher longevity.",
     citation: "Jensen, 2013",
     step: 1,
     category: 'daily',
@@ -154,6 +154,30 @@ export const DEFAULT_METRICS: MetricConfig[] = [
 
   // CLINICAL / PERIODIC METRICS
   {
+    id: "age",
+    name: "Age",
+    range: [20, 100],
+    unit: "years",
+    fact: "Primary factor in all risk models.",
+    citation: "General",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+  {
+    id: "sex",
+    name: "Biological Sex",
+    range: [0, 1], // 0=Female, 1=Male
+    unit: "",
+    fact: "0 = Female, 1 = Male. Affects risk algorithm coefficients.",
+    citation: "Genetics",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+  {
     id: "weight",
     name: "Weight",
     range: [50, 100],
@@ -177,20 +201,17 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     active: true,
     includeInSpider: false
   },
-  // Calculated Metrics (Not in inputs)
   {
-    id: "bmi",
-    name: "BMI",
-    range: [18.5, 24.9],
-    unit: "",
-    fact: "Keeping BMI 18.5–24.9 lowers mortality risk by up to 30%.",
-    citation: "Di Angelantonio, 2016",
-    step: 0.1,
+    id: "waist",
+    name: "Waist Circ.",
+    range: [70, 94],
+    unit: "cm",
+    fact: "Waist circumference is a key marker of visceral fat.",
+    citation: "IDF Consensus",
+    step: 0.5,
     category: 'clinical',
     active: true,
-    includeInSpider: true,
-    isCalculated: true,
-    formula: "weight / ((height/100) * (height/100))"
+    includeInSpider: false
   },
   {
     id: "bp_systolic",
@@ -203,6 +224,18 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     category: 'clinical',
     active: true,
     includeInSpider: true
+  },
+  {
+    id: "triglycerides",
+    name: "Triglycerides",
+    range: [40, 150],
+    unit: "mg/dL",
+    fact: "Low triglycerides (<150 mg/dL) indicate good metabolic health.",
+    citation: "AHA Guidelines",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
   },
   {
     id: "ldl",
@@ -240,47 +273,136 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     active: true,
     includeInSpider: true
   },
-  // New Calculated Scores (Templates)
   {
-      id: "metabolic_score",
-      name: "Metabolic Health",
-      range: [80, 100],
-      unit: "pts",
-      fact: "Composite score of Glucose, HDL, and Waist/Height (Placeholder).",
-      citation: "Custom",
-      step: 1,
-      category: 'clinical',
-      active: true,
-      includeInSpider: true,
-      isCalculated: true,
-      formula: "/* Example: */ 100 - (glucose > 100 ? glucose - 100 : 0) - (hdl < 40 ? 40 - hdl : 0)"
+    id: "egfr",
+    name: "eGFR",
+    range: [90, 120],
+    unit: "mL/min",
+    fact: "Kidney function (eGFR) predicts CVD and mortality independently.",
+    citation: "Matsushita, 2010",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: true
   },
   {
-      id: "cardio_risk",
-      name: "Cardio Risk Score",
-      range: [0, 10],
-      unit: "risk",
-      fact: "Lower is better. Derived from LDL and BP.",
-      citation: "Custom",
-      step: 0.1,
-      category: 'clinical',
-      active: true,
-      includeInSpider: true,
-      isCalculated: true,
-      formula: "(ldl / 30) + (bp_systolic > 120 ? (bp_systolic-120)/10 : 0)"
+    id: "smoking",
+    name: "Current Smoker",
+    range: [0, 1],
+    unit: "",
+    fact: "0 = No, 1 = Yes. Smoking doubles 10-year CVD risk.",
+    citation: "Surgeon General",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
   },
   {
-      id: "inflammation",
-      name: "Inflammation Score",
-      range: [0, 5],
-      unit: "idx",
-      fact: "Composite of CRP and other markers.",
-      citation: "Custom",
-      step: 0.1,
-      category: 'clinical',
-      active: true,
-      includeInSpider: true,
-      isCalculated: true,
-      formula: "/* Requires 'crp' metric */ typeof crp !== 'undefined' ? crp : 0"
+    id: "diabetes",
+    name: "Diabetes",
+    range: [0, 1],
+    unit: "",
+    fact: "0 = No, 1 = Yes. Diabetes is a risk equivalent to prior CVD.",
+    citation: "ADA",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+  {
+    id: "bp_meds",
+    name: "BP Meds",
+    range: [0, 1],
+    unit: "",
+    fact: "0 = No, 1 = Yes. Being treated for BP increases risk calc weighting.",
+    citation: "PCE",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+  {
+    id: "statin",
+    name: "On Statin",
+    range: [0, 1],
+    unit: "",
+    fact: "0 = No, 1 = Yes. Used in PREVENT algorithm.",
+    citation: "AHA",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false
+  },
+
+  // Calculated Metrics
+  {
+    id: "bmi",
+    name: "BMI",
+    range: [18.5, 24.9],
+    unit: "",
+    fact: "Keeping BMI 18.5–24.9 lowers mortality risk by up to 30%.",
+    citation: "Di Angelantonio, 2016",
+    step: 0.1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: true,
+    isCalculated: true,
+    formula: "weight / ((height/100) * (height/100))"
+  },
+  {
+    id: "whtr",
+    name: "Waist/Height Ratio",
+    range: [0.4, 0.5],
+    unit: "",
+    fact: "WHtR < 0.5 prevents central obesity and metabolic syndrome.",
+    citation: "Ashwell, 2012",
+    step: 0.01,
+    category: 'clinical',
+    active: true,
+    includeInSpider: true,
+    isCalculated: true,
+    formula: "waist / height"
+  },
+  {
+    id: "tyg",
+    name: "TyG Index",
+    range: [7.0, 8.5],
+    unit: "",
+    fact: "TyG < 8.5 indicates high insulin sensitivity. Superior to HOMA-IR.",
+    citation: "Guerrero-Romero, 2010",
+    step: 0.01,
+    category: 'clinical',
+    active: true,
+    includeInSpider: true,
+    isCalculated: true,
+    formula: "Math.log((triglycerides * glucose) / 2)"
+  },
+  {
+    id: "total_cholesterol",
+    name: "Total Cholesterol",
+    range: [150, 200],
+    unit: "mg/dL",
+    fact: "Calculated: LDL + HDL + (Trigs/5).",
+    citation: "Friedewald",
+    step: 1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: false,
+    isCalculated: true,
+    formula: "ldl + hdl + (triglycerides / 5)"
+  },
+  {
+    id: "cvd_risk_score",
+    name: "10y CVD Risk (PCE)",
+    range: [0, 5],
+    unit: "%",
+    fact: "Est. 10-year risk of heart attack or stroke. <5% is optimal. (Using 2013 PCE model)",
+    citation: "ACC/AHA",
+    step: 0.1,
+    category: 'clinical',
+    active: true,
+    includeInSpider: true,
+    isCalculated: true,
+    formula: "lib.calculateCVDRisk(vals)"
   }
 ];

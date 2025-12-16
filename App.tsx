@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MetricValues, LogEntry, StatusLevel, FeedbackItem, MetricConfig } from './types';
 import * as db from './services/storageService';
+import * as calculators from './services/riskCalculators';
 import { MetricCard } from './components/MetricCard';
 import { RadarView } from './components/RadarView';
 import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2 } from 'lucide-react';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer } from 'lucide-react';
 
 // Helper to determine status
 const getStatus = (val: number, range: [number, number]): StatusLevel => {
@@ -162,7 +163,8 @@ const newValues = { ...entry.values };
 calculatedMetrics.forEach(m => {
 if (!m.formula) return;
 try {
-const func = new Function('vals', `
+// Pass the calculators library as the second argument 'lib'
+const func = new Function('vals', 'lib', `
 with(vals) {
 try {
 return ${m.formula};
@@ -170,7 +172,7 @@ return ${m.formula};
 }
 `);
 
-const result = func(context);
+const result = func(context, calculators);
 if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
 const finalVal = parseFloat(result.toFixed(2));
 newValues[m.id] = finalVal;
@@ -333,7 +335,6 @@ setDismissedFeedback([]);
 };
 
 const handleDismissAllVisible = () => {
-    // Dismiss all currently displayed items that are NOT pinned
     const toDismiss = displayedFeedback
         .filter(item => !pinnedFeedback.includes(item.metricId))
         .map(item => item.metricId);
@@ -359,6 +360,162 @@ const vals: MetricValues = {};
 Object.entries(dashboardState).forEach(([k, v]) => vals[k] = v.value);
 return vals;
 }, [dashboardState]);
+
+
+// --- PRINT REPORT HANDLER ---
+
+const handlePrintReport = () => {
+    const regimen = db.getRegimen();
+    const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    // Helper: Recency text
+    const getRecencyLabel = (timestamp: string) => {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays === 0) return 'Today';
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 30) return `${diffDays}d ago`;
+        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+    };
+
+    // 1. Render Metrics Grid HTML
+    const metricsHtml = metrics.filter(m => m.active).map(m => {
+        const data = dashboardState[m.id];
+        if (!data) return '';
+        const status = getStatus(data.value, m.range);
+        const color = status === StatusLevel.GOOD ? '#22c55e' : status === StatusLevel.FAIR ? '#eab308' : '#ef4444';
+        const bg = status === StatusLevel.GOOD ? '#f0fdf4' : status === StatusLevel.FAIR ? '#fefce8' : '#fef2f2';
+        const recency = getRecencyLabel(data.timestamp);
+
+        return `
+        <div style="break-inside: avoid; border: 1px solid ${color}40; background: ${bg}; padding: 12px; border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold;">${m.name}</div>
+                <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 4px;">
+                    <span style="font-size: 18px; font-weight: bold; color: #0f172a;">${data.value}</span>
+                    <span style="font-size: 10px; color: #64748b;">${m.unit}</span>
+                </div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Target: ${m.range[0]} - ${m.range[1]}</div>
+            </div>
+            <div style="font-size: 9px; color: #94a3b8; margin-top: 8px; text-align: right; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 4px;">
+               ${recency}
+            </div>
+        </div>`;
+    }).join('');
+
+    // 2. Render Analysis HTML
+    const analysisHtml = baseFeedback.sort((a,b) => {
+        const score = (s: StatusLevel) => s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : 2;
+        return score(a.status) - score(b.status);
+    }).map(item => {
+        const color = item.status === StatusLevel.GOOD ? '#16a34a' : item.status === StatusLevel.FAIR ? '#ca8a04' : '#dc2626';
+        return `
+        <li style="margin-bottom: 8px; color: #334155; font-size: 12px; line-height: 1.4;">
+            <strong style="color: ${color};">${item.metricName}:</strong> ${item.message}
+            <div style="font-style: italic; color: #94a3b8; font-size: 10px; margin-top: 1px;">${item.citation}</div>
+        </li>`;
+    }).join('');
+
+    // 3. Regimen Markdown Parser
+    let regimenHtml = regimen || '';
+    
+    // Normalize newlines
+    regimenHtml = regimenHtml.replace(/\r\n/g, '\n');
+
+    // Tables: Parse block into HTML to protect from later newline replacement
+    regimenHtml = regimenHtml.replace(/((?:^\|.*\|\n?)+)/gm, (match) => {
+        const rows = match.trim().split('\n');
+        const renderedRows = rows.map((row, i) => {
+            const cells = row.split('|').filter(c => c.trim() !== '');
+            const isHeader = i === 0;
+            // Ignore separator line like |---|---|
+            if (row.includes('---')) return '';
+            
+            const tag = isHeader ? 'th' : 'td';
+            const style = isHeader 
+                ? 'border: 1px solid #cbd5e1; padding: 4px 8px; background: #f1f5f9; font-weight: bold;'
+                : 'border: 1px solid #cbd5e1; padding: 4px 8px;';
+            
+            const cellHtml = cells.map(c => `<${tag} style="${style}">${c.trim()}</${tag}>`).join('');
+            return `<tr>${cellHtml}</tr>`;
+        }).join('');
+        return `<table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 16px; margin-top: 8px; page-break-inside: avoid;">${renderedRows}</table>`;
+    });
+
+    // Headers
+    regimenHtml = regimenHtml.replace(/^### (.*$)/gm, '<h3 style="font-size: 14px; font-weight: bold; margin-top: 16px; margin-bottom: 8px; color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">$1</h3>');
+    regimenHtml = regimenHtml.replace(/^## (.*$)/gm, '<h2 style="font-size: 18px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; color: #0f172a;">$1</h2>');
+    regimenHtml = regimenHtml.replace(/^#### (.*$)/gm, '<h4 style="font-size: 13px; font-weight: bold; margin-top: 12px; margin-bottom: 4px; color: #475569;">$1</h4>');
+
+    // Bold
+    regimenHtml = regimenHtml.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Lists
+    regimenHtml = regimenHtml.replace(/^\* (.*$)/gm, '<li style="margin-bottom: 4px; margin-left: 16px;">$1</li>');
+    
+    // Horizontal Rule
+    regimenHtml = regimenHtml.replace(/^---/gm, '<hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />');
+
+    // Cleanup and Newlines
+    // Remove newlines immediately following block elements to prevent double spacing
+    regimenHtml = regimenHtml.replace(/(<\/h[234]>|<\/table>|<\/tr>|<\/li>|<\/hr>)\n/g, '$1');
+    // Convert remaining content newlines to breaks
+    regimenHtml = regimenHtml.replace(/\n/g, '<br />');
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Longevity Report - ${dateStr}</title>
+                <style>
+                    body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; padding: 40px; max-width: 800px; margin: 0 auto; }
+                    @media print { body { padding: 0; } }
+                    h1 { font-size: 24px; margin-bottom: 4px; }
+                    .date { font-size: 12px; color: #64748b; margin-bottom: 32px; }
+                    .section { margin-bottom: 32px; break-inside: avoid; }
+                    .section-title { font-size: 16px; font-weight: bold; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+                    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+                    ul { padding-left: 20px; }
+                </style>
+            </head>
+            <body>
+                <h1>Longevity Status Report</h1>
+                <div class="date">Generated on ${dateStr}</div>
+
+                <div class="section">
+                    <div class="section-title">Current Metrics</div>
+                    <div class="grid">
+                        ${metricsHtml || '<div style="grid-column: span 4; font-style: italic; color: #94a3b8;">No data available.</div>'}
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Analysis & Evidence</div>
+                    <ul>
+                        ${analysisHtml || '<li style="list-style: none; font-style: italic; color: #94a3b8;">No analysis available.</li>'}
+                    </ul>
+                </div>
+
+                <div class="section" style="break-before: auto;">
+                    <div class="section-title">Regimen & Protocol</div>
+                    <div style="font-size: 12px; line-height: 1.6;">
+                        ${regimenHtml}
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = () => { window.print(); }
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+    }
+};
 
 return (
 <div className="min-h-screen pb-12 bg-slate-50">
@@ -409,8 +566,20 @@ className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace
 {/* VIEW: DASHBOARD */}
 {view === 'dashboard' && (
 <div className="space-y-8">
-<div className="flex justify-end">
-<DataControls entries={entries} metrics={metrics} onImportComplete={refreshData} />
+<div className="flex justify-between items-start">
+<div>
+    <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
+    <p className="text-slate-500 text-sm">Overview of your current biological status.</p>
+</div>
+<div className="flex gap-2">
+    <button
+        onClick={handlePrintReport}
+        className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm"
+    >
+        <Printer className="w-4 h-4" /> Export Report
+    </button>
+    <DataControls entries={entries} metrics={metrics} onImportComplete={refreshData} />
+</div>
 </div>
 
 {processedEntries.length === 0 ? (
@@ -640,22 +809,52 @@ activeFormCategory === cat
 
 <form onSubmit={handleSave} className="p-6 sm:p-8">
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
-{metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).map(m => (
-<div key={m.id}>
-<label htmlFor={m.id} className="block text-sm font-semibold text-slate-800 mb-1.5">
-{m.name} <span className="text-slate-500 font-normal">({m.unit})</span>
-</label>
-<input
-type="number"
-id={m.id}
-step={m.step}
-placeholder={`${m.range[0]} - ${m.range[1]}`}
-className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border bg-white text-slate-900 font-medium placeholder:font-normal placeholder:text-slate-400"
-value={newEntryValues[m.id] !== undefined && newEntryValues[m.id] !== null ? newEntryValues[m.id]! : ''}
-onChange={(e) => handleInputChange(m.id, e.target.value)}
-/>
-</div>
-))}
+{metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).map(m => {
+    // BOOLEAN (Yes/No or Male/Female) Input Render Logic
+    // Detects if metric is 0-1 range with step 1.
+    const isBoolean = m.range[0] === 0 && m.range[1] === 1 && m.step === 1;
+    
+    return (
+    <div key={m.id}>
+        <label htmlFor={m.id} className="block text-sm font-semibold text-slate-800 mb-1.5">
+            {m.name} <span className="text-slate-500 font-normal">({m.unit})</span>
+        </label>
+        
+        {isBoolean ? (
+            <select
+                id={m.id}
+                className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border bg-white text-slate-900 font-medium"
+                value={newEntryValues[m.id] !== undefined && newEntryValues[m.id] !== null ? newEntryValues[m.id]! : ''}
+                onChange={(e) => handleInputChange(m.id, e.target.value)}
+            >
+                <option value="" disabled>Select...</option>
+                {/* Special Case: Sex */}
+                {m.id === 'sex' ? (
+                    <>
+                        <option value="0">Female</option>
+                        <option value="1">Male</option>
+                    </>
+                ) : (
+                    <>
+                        <option value="0">No</option>
+                        <option value="1">Yes</option>
+                    </>
+                )}
+            </select>
+        ) : (
+            <input
+                type="number"
+                id={m.id}
+                step={m.step}
+                placeholder={`${m.range[0]} - ${m.range[1]}`}
+                className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2.5 border bg-white text-slate-900 font-medium placeholder:font-normal placeholder:text-slate-400"
+                value={newEntryValues[m.id] !== undefined && newEntryValues[m.id] !== null ? newEntryValues[m.id]! : ''}
+                onChange={(e) => handleInputChange(m.id, e.target.value)}
+            />
+        )}
+    </div>
+    );
+})}
 </div>
 
 {metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).length === 0 && (
