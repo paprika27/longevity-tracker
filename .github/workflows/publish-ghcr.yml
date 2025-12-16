@@ -22,9 +22,9 @@ jobs:
           FROM node:20-alpine AS builder
           WORKDIR /app
           # Copy package files
-          COPY package.json package-lock.json* ./
+          COPY package.json ./
           # Install dependencies
-          RUN npm ci --prefer-offline --no-audit
+          RUN npm install --prefer-offline --no-audit
           # Copy source code
           COPY . .
           # Build the app
