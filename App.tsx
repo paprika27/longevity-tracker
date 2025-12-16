@@ -58,7 +58,7 @@ const App: React.FC = () => {
     // Metrics Grid State
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('all');
-    const [metricSort, setMetricSort] = useState<'default' | 'name' | 'status' | 'recency'>('default');
+    const [metricSort, setMetricSort] = useState<'default' | 'name' | 'status' | 'recency' | 'streak'>('default');
     const [metricFilter, setMetricFilter] = useState<'all' | 'good' | 'fair' | 'poor' | 'unknown'>('all');
 
     // Form Categories
@@ -307,22 +307,25 @@ const App: React.FC = () => {
             (!dashboardState[m.id].timestamp || !dashboardState[m.id].timestamp!.startsWith(todayStr))
         );
 
-        // B. At Risk Weekly Metrics
-        // Based on the weeklyProgress calculated above
-        const atRiskWeekly = metrics
+        // B. Weekly Metrics Progress (All of them, to show progress regardless of status)
+        const weeklyMetrics = metrics
             .filter(m => m.active && m.category === 'weekly' && dashboardState[m.id].weeklyProgress)
-            .map(m => ({
-                config: m,
-                current: dashboardState[m.id].weeklyProgress!.current,
-                target: dashboardState[m.id].weeklyProgress!.target
-            }))
-            .filter(item => {
+            .map(m => {
+                const prog = dashboardState[m.id].weeklyProgress!;
+                // Calculate Risk Flag
                 const dayOfWeek = (new Date().getDay() + 6) % 7 + 1; // 1-7
-                const expected = (item.target / 7) * dayOfWeek;
-                return item.current < expected * 0.8; // Alert if < 80% of pace
+                const expected = (prog.target / 7) * dayOfWeek;
+                const isAtRisk = prog.current < expected * 0.8;
+                
+                return {
+                    config: m,
+                    current: prog.current,
+                    target: prog.target,
+                    isAtRisk
+                };
             });
 
-        return { missingDaily, atRiskWeekly };
+        return { missingDaily, weeklyMetrics };
     }, [metrics, dashboardState]);
 
     // 4. Feedback Logic
@@ -397,6 +400,11 @@ const App: React.FC = () => {
                     return s === StatusLevel.POOR ? 0 : s === StatusLevel.FAIR ? 1 : s === StatusLevel.GOOD ? 2 : 3;
                 }
                 return getScore(a.id) - getScore(b.id);
+            }
+            if (metricSort === 'streak') {
+                const streakA = dashboardState[a.id]?.streak || 0;
+                const streakB = dashboardState[b.id]?.streak || 0;
+                return streakB - streakA;
             }
             if (a.category !== b.category) return a.category.localeCompare(b.category);
             return 0;
@@ -551,7 +559,8 @@ const App: React.FC = () => {
                         {/* COACH BANNER */}
                         <CoachBanner 
                             missingDailyMetrics={coachingData.missingDaily} 
-                            atRiskWeeklyMetrics={coachingData.atRiskWeekly}
+                            weeklyMetrics={coachingData.weeklyMetrics}
+                            onNavigateToEntry={() => setView('entry')}
                         />
 
                         {processedEntries.length === 0 ? (
@@ -616,24 +625,36 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Metric Cards Grid */}
+                                {/* Metric Cards Grid Controls */}
                                 <div>
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
                                         <h3 className="text-lg font-semibold text-slate-700 whitespace-nowrap">Detailed Metrics</h3>
-                                        <div className="w-full md:w-auto flex flex-col sm:flex-row gap-2">
-                                            <div className="relative flex-1 sm:flex-initial">
+                                        <div className="w-full lg:w-auto flex flex-col sm:flex-row gap-2 flex-wrap">
+                                            <div className="relative flex-1 min-w-[140px]">
                                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                                                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full sm:w-40 pl-9 pr-3 py-1.5 text-xs rounded-lg border-slate-200 focus:border-indigo-500 bg-white shadow-sm" />
+                                                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border-slate-200 focus:border-indigo-500 bg-white shadow-sm" />
                                             </div>
-                                            <div className="flex gap-2">
-                                                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer">
+                                            
+                                            <div className="flex gap-2 flex-wrap">
+                                                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[100px]">
                                                     <option value="all">All Cats</option>
                                                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
-                                                <select value={metricSort} onChange={(e) => setMetricSort(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer">
+
+                                                <select value={metricFilter} onChange={(e) => setMetricFilter(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
+                                                    <option value="all">All Status</option>
+                                                    <option value="good">Good (Green)</option>
+                                                    <option value="fair">Fair (Yellow)</option>
+                                                    <option value="poor">Poor (Red)</option>
+                                                    <option value="unknown">No Data</option>
+                                                </select>
+
+                                                <select value={metricSort} onChange={(e) => setMetricSort(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="default">Default</option>
                                                     <option value="name">Name</option>
                                                     <option value="status">Status</option>
+                                                    <option value="recency">Updated Recently</option>
+                                                    <option value="streak">Streak Length</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -676,7 +697,7 @@ const App: React.FC = () => {
                                 <FormattedDateInput value={entryDate} onChange={setEntryDate} format={appSettings.dateFormat} />
                                 <div className="flex gap-2">
                                     <FormattedTimeInput value={entryTime} onChange={setEntryTime} format={appSettings.timeFormat} />
-                                    <button type="button" onClick={setNow} className="px-3 py-2 bg-slate-100 rounded-md"><RotateCcw className="w-3 h-3"/></button>
+                                    <button type="button" onClick={setNow} className="px-3 py-2 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"><RotateCcw className="w-3 h-3 text-slate-600"/></button>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
@@ -688,7 +709,7 @@ const App: React.FC = () => {
                                         <div key={m.id}>
                                             <label className="block text-sm font-semibold text-slate-800 mb-1">{m.name} <span className="text-slate-500 font-normal">({m.unit})</span></label>
                                             {isBool ? (
-                                                <select className="w-full rounded-md border-slate-300 shadow-sm px-4 py-2 border" value={newEntryValues[m.id] ?? ''} onChange={e => handleInputChange(m.id, e.target.value)}>
+                                                <select className="w-full rounded-md border-slate-300 shadow-sm px-4 py-2 border bg-white text-slate-900 font-medium" value={newEntryValues[m.id] ?? ''} onChange={e => handleInputChange(m.id, e.target.value)}>
                                                     <option value="" disabled>Select...</option>
                                                     <option value="0">No / Low</option>
                                                     <option value="1">Yes / High</option>
@@ -696,7 +717,7 @@ const App: React.FC = () => {
                                             ) : isTime ? (
                                                 <FormattedDurationInput value={newEntryValues[m.id] as number} onChange={val => handleInputChange(m.id, val)} unit={m.unit} />
                                             ) : (
-                                                <input type="number" step={m.step} className="w-full rounded-md border-slate-300 shadow-sm px-4 py-2 border" value={newEntryValues[m.id] ?? ''} onChange={e => handleInputChange(m.id, e.target.value)} />
+                                                <input type="number" step={m.step} className="w-full rounded-md border-slate-300 shadow-sm px-4 py-2 border bg-white text-slate-900 font-medium" value={newEntryValues[m.id] ?? ''} onChange={e => handleInputChange(m.id, e.target.value)} />
                                             )}
                                         </div>
                                     );
@@ -706,8 +727,8 @@ const App: React.FC = () => {
                                 )}
                             </div>
                             <div className="pt-6 flex justify-end gap-3 mt-8 border-t border-slate-100">
-                                <button type="button" onClick={() => setView('dashboard')} className="px-4 py-2 text-sm border rounded-lg">Cancel</button>
-                                <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg">Save Entry</button>
+                                <button type="button" onClick={() => setView('dashboard')} className="px-4 py-2 text-sm border rounded-lg bg-white text-slate-700 hover:bg-slate-50">Cancel</button>
+                                <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors">Save Entry</button>
                             </div>
                         </form>
                      </div>

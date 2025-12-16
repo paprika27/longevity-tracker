@@ -128,7 +128,7 @@ export const FormattedDateInput: React.FC<FormattedDateInputProps> = ({ value, o
         onFocus={() => setIsFocused(true)}
         onBlur={handleBlur}
         placeholder={format.toLowerCase()}
-        className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium z-10 relative bg-transparent"
+        className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium z-10 relative"
       />
       
       {/* Native Date Picker Trigger */}
@@ -254,7 +254,7 @@ export const FormattedTimeInput: React.FC<FormattedTimeInputProps> = ({ value, o
                 onFocus={() => setIsFocused(true)}
                 onBlur={handleBlur}
                 placeholder={format === '12h' ? '12:00 PM' : '24:00'}
-                className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium z-10 relative bg-transparent"
+                className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium z-10 relative"
             />
             
             {/* Native Time Picker Trigger */}

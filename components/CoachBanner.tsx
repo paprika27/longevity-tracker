@@ -1,107 +1,125 @@
 
-import React from 'react';
-import { AlertCircle, CheckCircle2, TrendingUp, Calendar } from 'lucide-react';
+import React, { useState } from 'react';
+import { Activity, ListChecks, TrendingUp, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { MetricConfig } from '../types';
+import { formatDuration } from './FormattedInputs';
 
 interface CoachBannerProps {
   missingDailyMetrics: MetricConfig[];
-  atRiskWeeklyMetrics: { config: MetricConfig; current: number; target: number }[];
+  weeklyMetrics: { config: MetricConfig; current: number; target: number; isAtRisk?: boolean }[];
+  onNavigateToEntry: () => void;
 }
 
-export const CoachBanner: React.FC<CoachBannerProps> = ({ missingDailyMetrics, atRiskWeeklyMetrics }) => {
+export const CoachBanner: React.FC<CoachBannerProps> = ({ missingDailyMetrics, weeklyMetrics, onNavigateToEntry }) => {
+  const [showAllDaily, setShowAllDaily] = useState(false);
   const date = new Date();
   const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-  const isWeekend = dayName === 'Saturday' || dayName === 'Sunday';
 
-  const allClear = missingDailyMetrics.length === 0 && atRiskWeeklyMetrics.length === 0;
-
-  if (allClear) {
-    return (
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-6 text-white shadow-md mb-8">
-        <div className="flex items-start gap-4">
-          <div className="p-3 bg-white/20 rounded-full backdrop-blur-sm">
-            <CheckCircle2 className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold mb-1">All Systems Nominal</h3>
-            <p className="text-indigo-100">
-              Incredible work. You've logged your daily metrics and your weekly targets are on track. 
-              {isWeekend ? " Enjoy your active recovery weekend!" : " Keep maintaining this momentum."}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Display top 5 or all depending on state
+  const visibleDaily = showAllDaily ? missingDailyMetrics : missingDailyMetrics.slice(0, 5);
+  const hiddenCount = missingDailyMetrics.length - visibleDaily.length;
 
   return (
     <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden mb-8">
-      <div className="bg-indigo-50/50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center">
+      <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center">
         <div>
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-indigo-600" />
-            Coach's Briefing <span className="text-slate-400 font-normal text-sm">| {dayName}</span>
+            <Activity className="w-5 h-5 text-indigo-600" />
+            Coach's Daily Briefing
           </h3>
+          <p className="text-xs text-slate-500 mt-0.5 uppercase tracking-wide font-semibold">{dayName}</p>
         </div>
       </div>
       
-      <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Daily Tasks */}
-        <div>
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-            <AlertCircle className="w-4 h-4 text-orange-500" /> Action Required Today
+      <div className="p-0 sm:p-6 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-indigo-50">
+        
+        {/* LEFT: DAILY INPUTS */}
+        <div className="p-6 sm:p-0 sm:pr-6">
+          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+            <ListChecks className="w-4 h-4 text-orange-500" /> 
+            Log These Today
           </h4>
+          
           {missingDailyMetrics.length > 0 ? (
-            <ul className="space-y-2">
-              {missingDailyMetrics.slice(0, 4).map(m => (
-                <li key={m.id} className="flex items-center gap-2 text-sm text-slate-700 bg-orange-50/50 px-3 py-2 rounded-md border border-orange-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
-                  Log <strong>{m.name}</strong>
-                </li>
+            <div className="space-y-3">
+              {visibleDaily.map(m => (
+                <button 
+                  key={m.id} 
+                  onClick={onNavigateToEntry}
+                  className="flex items-center justify-between group w-full text-left hover:bg-slate-50 p-1.5 -mx-1.5 rounded transition-colors"
+                  title="Click to Log"
+                >
+                    <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-600 transition-colors border-b border-dotted border-slate-300 pb-0.5">{m.name}</span>
+                    <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full group-hover:bg-white group-hover:shadow-sm">Log Now &rarr;</span>
+                </button>
               ))}
-              {missingDailyMetrics.length > 4 && (
-                <li className="text-xs text-slate-400 pl-4">+ {missingDailyMetrics.length - 4} more</li>
+              
+              {!showAllDaily && hiddenCount > 0 && (
+                <button 
+                  onClick={() => setShowAllDaily(true)}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1 mt-2"
+                >
+                  <ChevronDown className="w-3 h-3" /> Show {hiddenCount} more
+                </button>
               )}
-            </ul>
+              {showAllDaily && missingDailyMetrics.length > 5 && (
+                 <button 
+                  onClick={() => setShowAllDaily(false)}
+                  className="text-xs text-slate-400 hover:text-slate-600 font-medium flex items-center gap-1 mt-2"
+                >
+                  <ChevronUp className="w-3 h-3" /> Show Less
+                </button>
+              )}
+            </div>
           ) : (
-            <div className="text-sm text-green-600 flex items-center gap-2 bg-green-50 px-3 py-2 rounded-md">
-              <CheckCircle2 className="w-4 h-4" /> Daily logs complete.
+            <div className="flex flex-col items-center justify-center h-24 bg-green-50 rounded-lg border border-green-100 text-green-700">
+                <CheckCircle2 className="w-6 h-6 mb-1 opacity-80" />
+                <span className="text-sm font-medium">All daily logs complete!</span>
             </div>
           )}
         </div>
 
-        {/* Weekly Focus */}
-        <div>
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-            <TrendingUp className="w-4 h-4 text-blue-500" /> Weekly Targets Focus
+        {/* RIGHT: WEEKLY ACCUMULATION */}
+        <div className="p-6 sm:p-0 sm:pl-6">
+          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-blue-500" /> 
+            Weekly Accumulation
           </h4>
-          {atRiskWeeklyMetrics.length > 0 ? (
-            <ul className="space-y-3">
-              {atRiskWeeklyMetrics.map(item => {
-                const remaining = Math.max(0, item.target - item.current);
-                const percent = Math.min(100, Math.round((item.current / (item.target || 1)) * 100));
+          
+          {weeklyMetrics.length > 0 ? (
+            <div className="space-y-4 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
+              {weeklyMetrics.map(item => {
+                const pct = Math.min(100, Math.round((item.current / item.target) * 100));
+                
+                // Colors based on risk and progress
+                let barColor = 'bg-blue-500';
+                if (item.isAtRisk) barColor = 'bg-orange-400';
+                if (pct >= 100) barColor = 'bg-green-500';
+
+                const formattedCurrent = item.config.isTimeBased ? formatDuration(item.current) : item.current;
+                const formattedTarget = item.config.isTimeBased ? formatDuration(item.target) : item.target;
+
                 return (
-                  <li key={item.config.id} className="text-sm">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-slate-700">{item.config.name}</span>
-                      <span className="text-slate-500 text-xs">{item.current} / {item.target} {item.config.unit}</span>
+                  <div key={item.config.id}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium text-slate-700">{item.config.name}</span>
+                      <span className={`font-mono text-xs ${item.isAtRisk ? 'text-orange-600 font-bold' : 'text-slate-500'}`}>
+                        {formattedCurrent} / {formattedTarget} {item.config.unit.split('/')[0]}
+                      </span>
                     </div>
                     <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-blue-500 rounded-full" 
-                        style={{ width: `${percent}%` }}
+                        className={`h-full rounded-full ${barColor} transition-all duration-500`} 
+                        style={{ width: `${pct}%` }}
                       ></div>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Need {Math.round(remaining * 10) / 10} more {item.config.unit} this week.
-                    </p>
-                  </li>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           ) : (
-            <div className="text-sm text-slate-500 italic py-2">
-              No weekly targets at risk. You are on track!
+            <div className="flex flex-col items-center justify-center h-24 bg-slate-50 rounded-lg border border-slate-200 text-slate-400">
+                 <span className="text-sm">No weekly metrics tracked.</span>
             </div>
           )}
         </div>

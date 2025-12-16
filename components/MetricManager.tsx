@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { MetricConfig, AppSettings, DateFormat, TimeFormat } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator, AlertTriangle, FlaskConical, Sliders, Clock } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator, AlertTriangle, FlaskConical, Sliders, Clock, Info } from 'lucide-react';
 import * as db from '../services/storageService';
 
 interface MetricManagerProps {
@@ -91,23 +91,29 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
   const validateFormula = (formula: string): boolean => {
       // 1. Check syntax by creating function
       try {
-          const f = new Function('vals', `with(vals) { return ${formula}; }`);
+          // Construct function with 'vals' and 'lib' arguments
+          const f = new Function('vals', 'lib', `with(vals) { return ${formula}; }`);
           
-          // 2. Check variables. Simple regex to find words.
-          // This is a naive check but helps basic typos.
-          const vars = formula.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
-          const knownIds = metrics.map(m => m.id);
-          // Filter out JS keywords/math object members to be safe? 
-          // Actually, just checking if *some* variables exist is usually enough for a "quick check"
-          // Let's just run it with dummy data.
-          
+          // 2. Mock Data & Lib for execution test
           const dummyData: any = {};
           metrics.forEach(m => dummyData[m.id] = 1);
           
-          f(dummyData); // Run it
+          const dummyLib = {
+              sum: () => 100,
+              calculateCVDRisk: () => 5
+          };
+          
+          // 3. Execute with dummy data
+          const result = f(dummyData, dummyLib);
+          
+          // Optional: Check if result is a number (though null is allowed)
+          if (typeof result !== 'number' && result !== null && result !== undefined) {
+             console.warn("Formula returned non-number:", result);
+          }
+          
           return true;
       } catch (e: any) {
-          alert("Formula Error: " + e.message + "\n\nMake sure you are using valid Metric IDs (e.g. 'weight', 'height').");
+          alert("Formula Error: " + e.message + "\n\nMake sure you are using valid Metric IDs and library functions.");
           return false;
       }
   };
@@ -376,8 +382,8 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                              </div>
                              
                              {editForm.isCalculated && (
-                                 <div className="space-y-1 bg-slate-50 p-3 rounded border border-slate-200">
-                                     <div className="flex justify-between">
+                                 <div className="space-y-2 bg-slate-50 p-3 rounded border border-slate-200">
+                                     <div className="flex justify-between items-center">
                                         <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Formula (JS)</label>
                                         <button 
                                             onClick={() => { if(editForm.formula) validateFormula(editForm.formula) ? alert("Formula is valid!") : null; }}
@@ -393,10 +399,15 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                                         onChange={e => setEditForm({...editForm, formula: e.target.value})}
                                         placeholder="e.g. weight / ((height/100) * (height/100))"
                                      />
-                                     <p className="text-[10px] text-slate-500">
-                                         Available variables: {metrics.map(x => x.id).join(', ')}. <br/>
-                                         Example: <span className="font-mono text-slate-700">weight / Math.pow(height/100, 2)</span>
-                                     </p>
+                                     <div className="text-[10px] text-slate-500 space-y-1">
+                                         <p><strong className="text-slate-600">Variables:</strong> {metrics.map(x => x.id).join(', ')}</p>
+                                         <p><strong className="text-slate-600">Functions:</strong></p>
+                                         <ul className="list-disc list-inside pl-1 text-slate-600 font-mono">
+                                             <li>lib.sum(metric_id, 'week' | 'month')</li>
+                                             <li>lib.sum(metric_id, days_count)</li>
+                                             <li>lib.calculateCVDRisk(vals)</li>
+                                         </ul>
+                                     </div>
                                  </div>
                              )}
                         </div>
