@@ -12,6 +12,7 @@ export interface MetricConfig {
   includeInSpider: boolean;
   isCalculated?: boolean; // New flag for metrics like BMI that are derived
   formula?: string; // JavaScript expression using metric IDs as variables
+  isTimeBased?: boolean; // If true, input uses FormattedDurationInput (HH:MM -> decimal)
 }
 
 // Map of metric ID to value (number) or null if not recorded
@@ -42,4 +43,12 @@ export interface FeedbackItem {
 }
 export interface RegimenData {
   text: string;
+}
+
+export type DateFormat = 'YYYY-MM-DD' | 'DD.MM.YYYY' | 'MM/DD/YYYY';
+export type TimeFormat = '24h' | '12h';
+
+export interface AppSettings {
+  dateFormat: DateFormat;
+  timeFormat: TimeFormat;
 }

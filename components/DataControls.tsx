@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import { Download, Upload, Loader2, FileJson, FileSpreadsheet } from 'lucide-react';
 import { LogEntry, MetricConfig, MetricValues } from '../types';
@@ -124,6 +125,31 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
 
       return null;
   };
+  
+  // Helper: Parse metric values that might be times (e.g., "7:30" -> 7.5)
+  const parseMetricValue = (val: any): number | null => {
+      if (val === null || val === undefined || val === '') return null;
+      
+      if (typeof val === 'number') return val;
+      
+      const str = String(val).trim();
+      
+      // Check for Colon Format (HH:MM or MM:SS)
+      if (str.includes(':')) {
+          const parts = str.split(':');
+          if (parts.length >= 2) {
+              const h = parseFloat(parts[0]);
+              const m = parseFloat(parts[1]);
+              if (!isNaN(h) && !isNaN(m)) {
+                  // Standard conversion: first part + second part/60
+                  return parseFloat((h + m / 60).toFixed(2));
+              }
+          }
+      }
+      
+      const parsed = parseFloat(str);
+      return isNaN(parsed) ? null : parsed;
+  };
 
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -157,17 +183,15 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                          Object.keys(row).forEach(k => normRow[k.toLowerCase().trim()] = row[k]);
 
                          const metricId = normRow['metric'];
-                         const val = normRow['value'];
+                         const rawVal = normRow['value'];
                          const unit = normRow['unit'] || '';
                          const rawDate = normRow['date'];
                          let timeStr = normRow['time'];
 
-                         // Debug logging for first row to help troubleshooting
-                         if (rowIndex === 0) {
-                             console.log("First row import sample:", { rawDate, dateType: typeof rawDate, metricId, val });
-                         }
-
-                         if (!metricId || val === undefined || !rawDate) return;
+                         if (!metricId || rawVal === undefined || !rawDate) return;
+                         
+                         const val = parseMetricValue(rawVal);
+                         if (val === null) return;
 
                          const dateStr = parseDateString(rawDate);
                          if (!dateStr) return;

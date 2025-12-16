@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush, ReferenceArea } from 'recharts';
-import { LogEntry, MetricConfig } from '../types';
+import { LogEntry, MetricConfig, AppSettings } from '../types';
 import { XCircle } from 'lucide-react';
 
 interface HistoryViewProps {
@@ -8,9 +9,10 @@ interface HistoryViewProps {
   metrics: MetricConfig[];
   selectedMetrics: string[];
   onSelectionChange: (metrics: string[]) => void;
+  settings: AppSettings;
 }
 
-export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, selectedMetrics, onSelectionChange }) => {
+export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, selectedMetrics, onSelectionChange, settings }) => {
   const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
@@ -82,6 +84,36 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
 
   const clearSelection = () => {
       onSelectionChange([]);
+  };
+
+  // Helper for Date Formatting
+  const formatTickDate = (unix: number) => {
+      const date = new Date(unix);
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      const yy = String(y).slice(-2);
+
+      if (settings.dateFormat === 'DD.MM.YYYY') return `${d}.${m}.${yy}`;
+      if (settings.dateFormat === 'MM/DD/YYYY') return `${m}/${d}/${yy}`;
+      return `${y}-${m}-${d}`;
+  };
+
+  const formatTooltipLabel = (unix: number) => {
+      const date = new Date(unix);
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      
+      let dateStr = `${y}-${m}-${d}`;
+      if (settings.dateFormat === 'DD.MM.YYYY') dateStr = `${d}.${m}.${y}`;
+      if (settings.dateFormat === 'MM/DD/YYYY') dateStr = `${m}/${d}/${y}`;
+
+      const timeOpts: Intl.DateTimeFormatOptions = settings.timeFormat === '12h' 
+        ? { hour: 'numeric', minute: '2-digit', hour12: true } 
+        : { hour: '2-digit', minute: '2-digit', hour12: false };
+      
+      return `${dateStr} ${date.toLocaleTimeString([], timeOpts)}`;
   };
 
   // Generate colors
@@ -185,7 +217,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                     domain={['dataMin', 'dataMax']} 
                     stroke="#94a3b8" 
                     fontSize={12} 
-                    tickFormatter={(unix) => new Date(unix).toLocaleDateString()}
+                    tickFormatter={formatTickDate}
                     tickLine={false}
                     axisLine={false}
                     minTickGap={50}
@@ -200,7 +232,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                     tickFormatter={(val) => commonUnit ? `${val} ${commonUnit}` : `${val}`}
                 />
                 <Tooltip 
-                    labelFormatter={(unix) => new Date(unix).toLocaleDateString() + ' ' + new Date(unix).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    labelFormatter={formatTooltipLabel}
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     formatter={(value: number, name: string, item: any) => {
                         const m = metrics.find(met => met.id === item.dataKey);
@@ -229,7 +261,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                     height={30} 
                     stroke="#cbd5e1" 
                     fill="#f8fafc" 
-                    tickFormatter={(unix) => new Date(unix).toLocaleDateString(undefined, { month: 'short', year: '2-digit' })}
+                    tickFormatter={(unix) => {
+                        const date = new Date(unix);
+                        const m = String(date.getMonth() + 1).padStart(2, '0');
+                        const y = String(date.getFullYear()).slice(-2);
+                        return `${m}/${y}`;
+                    }}
                 />
             </LineChart>
             </ResponsiveContainer>

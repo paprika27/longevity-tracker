@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
-import { MetricConfig } from '../types';
-import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator, AlertTriangle, FlaskConical } from 'lucide-react';
+import { MetricConfig, AppSettings, DateFormat, TimeFormat } from '../types';
+import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator, AlertTriangle, FlaskConical, Sliders, Clock } from 'lucide-react';
 import * as db from '../services/storageService';
 
 interface MetricManagerProps {
@@ -8,9 +9,11 @@ interface MetricManagerProps {
   onUpdate: (newMetrics: MetricConfig[]) => void;
   onRename?: (oldId: string, newId: string, newConfig: MetricConfig) => boolean;
   onFactoryReset: () => void;
+  settings: AppSettings;
+  onSettingsChange: (newSettings: AppSettings) => void;
 }
 
-export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate, onRename, onFactoryReset }) => {
+export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate, onRename, onFactoryReset, settings, onSettingsChange }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<MetricConfig>>({});
   
@@ -147,7 +150,8 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
       category: activeCategory, // Add to current view
       active: true,
       includeInSpider: true,
-      isCalculated: false
+      isCalculated: false,
+      isTimeBased: false
     };
     const updated = [...metrics, newMetric];
     onUpdate(updated);
@@ -178,6 +182,43 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
 
   return (
     <div className="space-y-6">
+      
+      {/* General Settings Section */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-slate-500" /> General Preferences
+            </h3>
+        </div>
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Date Format</label>
+                <select
+                    value={settings.dateFormat}
+                    onChange={(e) => onSettingsChange({ ...settings, dateFormat: e.target.value as DateFormat })}
+                    className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium"
+                >
+                    <option value="YYYY-MM-DD">ISO (YYYY-MM-DD)</option>
+                    <option value="DD.MM.YYYY">EU (DD.MM.YYYY)</option>
+                    <option value="MM/DD/YYYY">US (MM/DD/YYYY)</option>
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">Used for reports and history axes.</p>
+            </div>
+            <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Time Format</label>
+                <select
+                    value={settings.timeFormat}
+                    onChange={(e) => onSettingsChange({ ...settings, timeFormat: e.target.value as TimeFormat })}
+                    className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium"
+                >
+                    <option value="24h">24 Hour (14:30)</option>
+                    <option value="12h">12 Hour (2:30 PM)</option>
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">Used for reports and tooltips.</p>
+            </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         
         {/* Header / Category Tabs */}
@@ -359,9 +400,32 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                                  </div>
                              )}
                         </div>
+                        
+                        {/* Time Format Toggle */}
+                        {!editForm.isCalculated && (
+                        <div className="md:col-span-2 space-y-2 border-t border-slate-100 pt-2">
+                             <div className="flex items-center gap-2">
+                                <input 
+                                    type="checkbox" 
+                                    id="isTimeBased"
+                                    checked={editForm.isTimeBased || false}
+                                    onChange={e => setEditForm({...editForm, isTimeBased: e.target.checked})}
+                                    className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                />
+                                <div className="flex flex-col">
+                                    <label htmlFor="isTimeBased" className="text-sm font-medium text-slate-700 flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-slate-400" /> Input as Time Format
+                                    </label>
+                                    <span className="text-[10px] text-slate-500">
+                                        Converts inputs like "6:30" (Base 60) to 6.5 (Decimal). Useful for Sleep (hrs:min), Pace (min:sec), etc.
+                                    </span>
+                                </div>
+                             </div>
+                        </div>
+                        )}
 
                         {!editForm.isCalculated && (
-                        <div className="space-y-1 md:col-span-2">
+                        <div className="space-y-1 md:col-span-2 mt-2">
                              <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Assigned Form</label>
                              <select 
                                 className="w-full text-sm font-medium text-slate-900 border-slate-300 rounded-md bg-white"
@@ -391,6 +455,7 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                             <h4 className={`font-semibold text-base ${m.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{m.name}</h4>
                             {!m.active && <span className="text-[10px] uppercase bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 font-medium">Hidden</span>}
                             {m.isCalculated && <span className="text-[10px] uppercase bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded font-medium flex items-center gap-1"><Calculator className="w-3 h-3"/> Auto</span>}
+                            {m.isTimeBased && <span className="text-[10px] uppercase bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-medium flex items-center gap-1"><Clock className="w-3 h-3"/> Time</span>}
                             {!isAssigned && isSelectionMode && <span className="text-[10px] uppercase bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">In {m.category}</span>}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">

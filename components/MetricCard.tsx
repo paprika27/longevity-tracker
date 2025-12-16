@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { MetricConfig, StatusLevel } from '../types';
+import { MetricConfig, StatusLevel, DateFormat } from '../types';
 import { Smile, Meh, Frown, HelpCircle, Clock } from 'lucide-react';
 
 interface MetricCardProps {
@@ -8,9 +9,10 @@ value: number | null;
 status: StatusLevel;
 timestamp?: string;
 onClick?: () => void;
+dateFormat?: DateFormat;
 }
 
-export const MetricCard: React.FC<MetricCardProps> = ({ config, value, status, timestamp, onClick }) => {
+export const MetricCard: React.FC<MetricCardProps> = ({ config, value, status, timestamp, onClick, dateFormat = 'YYYY-MM-DD' }) => {
 const getIcon = () => {
 switch (status) {
 case StatusLevel.GOOD: return <Smile className="w-6 h-6 text-green-500" />;
@@ -41,6 +43,17 @@ if (diffDays === 1) return 'Yesterday';
 if (diffDays < 30) return `${diffDays}d ago`;
 if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
 return `${Math.floor(diffDays / 365)}y ago`;
+};
+
+const getFormattedDate = (ts: string) => {
+    const date = new Date(ts);
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+
+    if (dateFormat === 'DD.MM.YYYY') return `${d}.${m}.${y}`;
+    if (dateFormat === 'MM/DD/YYYY') return `${m}/${d}/${y}`;
+    return `${y}-${m}-${d}`;
 };
 
 // Calculate percentage for visualization bar
@@ -93,7 +106,7 @@ return (
 
 {/* Age Indicator */}
 {timestamp && value !== null && (
-<span className="ml-auto text-[10px] flex items-center gap-0.5 text-slate-400 bg-white/50 px-1.5 py-0.5 rounded-full border border-black/5" title={new Date(timestamp).toLocaleDateString()}>
+<span className="ml-auto text-[10px] flex items-center gap-0.5 text-slate-400 bg-white/50 px-1.5 py-0.5 rounded-full border border-black/5" title={getFormattedDate(timestamp)}>
 <Clock className="w-2.5 h-2.5" />
 {getRelativeTime(timestamp)}
 </span>

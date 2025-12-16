@@ -1,10 +1,12 @@
-import { LogEntry, MetricConfig, MetricValues } from '../types';
-import { DEFAULT_METRICS, DEFAULT_REGIMEN, DEFAULT_CATEGORIES } from '../constants';
+
+import { LogEntry, MetricConfig, MetricValues, AppSettings } from '../types';
+import { DEFAULT_METRICS, DEFAULT_REGIMEN, DEFAULT_CATEGORIES, DEFAULT_SETTINGS } from '../constants';
 
 const ENTRIES_KEY = 'longevity_tracker_entries';
 const METRICS_KEY = 'longevity_tracker_metrics';
 const REGIMEN_KEY = 'longevity_tracker_regimen';
 const CATEGORIES_KEY = 'longevity_tracker_categories';
+const SETTINGS_KEY = 'longevity_tracker_settings';
 
 export const getEntries = (): LogEntry[] => {
   try {
@@ -107,6 +109,21 @@ export const saveRegimen = (text: string): void => {
   localStorage.setItem(REGIMEN_KEY, text);
 };
 
+// --- SETTINGS ---
+
+export const getSettings = (): AppSettings => {
+    try {
+        const data = localStorage.getItem(SETTINGS_KEY);
+        return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
+    } catch {
+        return DEFAULT_SETTINGS;
+    }
+};
+
+export const saveSettings = (settings: AppSettings): void => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+};
+
 // --- SYSTEM ---
 
 export const factoryReset = (): void => {
@@ -114,4 +131,5 @@ export const factoryReset = (): void => {
     localStorage.removeItem(METRICS_KEY);
     localStorage.removeItem(REGIMEN_KEY);
     localStorage.removeItem(CATEGORIES_KEY);
+    localStorage.removeItem(SETTINGS_KEY);
 };

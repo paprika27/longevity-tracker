@@ -1,4 +1,5 @@
-import { MetricConfig } from './types';
+
+import { MetricConfig, AppSettings } from './types';
 
 export const DEFAULT_REGIMEN = `## Systems Engineering Approach
 
@@ -27,6 +28,11 @@ Treating the body as a biological system. Optimization of output (performance/lo
 
 export const DEFAULT_CATEGORIES = ['daily', 'weekly', 'clinical'];
 
+export const DEFAULT_SETTINGS: AppSettings = {
+  dateFormat: 'YYYY-MM-DD',
+  timeFormat: '24h'
+};
+
 export const DEFAULT_METRICS: MetricConfig[] = [
   // DAILY METRICS
   {
@@ -39,7 +45,8 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     step: 0.5,
     category: 'daily',
     active: true,
-    includeInSpider: true
+    includeInSpider: true,
+    isTimeBased: true
   },
   {
     id: "rhr",
@@ -113,7 +120,8 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     step: 5,
     category: 'weekly',
     active: true,
-    includeInSpider: true
+    includeInSpider: true,
+    isTimeBased: true
   },
   {
     id: "running",
@@ -125,7 +133,8 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     step: 5,
     category: 'weekly',
     active: true,
-    includeInSpider: true
+    includeInSpider: true,
+    isTimeBased: true
   },
   {
     id: "strength",

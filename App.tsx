@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { MetricValues, LogEntry, StatusLevel, FeedbackItem, MetricConfig } from './types';
+import { MetricValues, LogEntry, StatusLevel, FeedbackItem, MetricConfig, AppSettings } from './types';
 import * as db from './services/storageService';
 import * as calculators from './services/riskCalculators';
 import { MetricCard } from './components/MetricCard';
@@ -8,7 +9,9 @@ import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock } from 'lucide-react';
+import { FormattedDateInput, FormattedTimeInput, FormattedDurationInput } from './components/FormattedInputs';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock, RotateCcw } from 'lucide-react';
+import { DEFAULT_SETTINGS } from './constants';
 
 // Helper to determine status
 const getStatus = (val: number, range: [number, number]): StatusLevel => {
@@ -29,6 +32,7 @@ const [entries, setEntries] = useState<LogEntry[]>([]);
 const [metrics, setMetrics] = useState<MetricConfig[]>([]);
 const [categories, setCategories] = useState<string[]>([]);
 const [newEntryValues, setNewEntryValues] = useState<MetricValues>({});
+const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
 // Entry Date/Time State
 const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -62,6 +66,7 @@ setMetrics(db.getMetrics());
 const cats = db.getCategories();
 setCategories(cats);
 if (cats.length > 0) setActiveFormCategory(cats[0]);
+setAppSettings(db.getSettings());
 }, []);
 
 // Persist feedback preferences
@@ -72,10 +77,16 @@ const refreshData = () => {
 setEntries(db.getEntries());
 setMetrics(db.getMetrics());
 setCategories(db.getCategories());
+setAppSettings(db.getSettings());
 };
 
 const handleMetricsUpdate = (updatedMetrics: MetricConfig[]) => {
 setMetrics(updatedMetrics);
+};
+
+const handleSettingsUpdate = (newSettings: AppSettings) => {
+    setAppSettings(newSettings);
+    db.saveSettings(newSettings);
 };
 
 const handleMetricRename = (oldId: string, newId: string, newConfig: MetricConfig): boolean => {
@@ -316,6 +327,18 @@ return result;
 
 // --- HANDLERS ---
 
+const setNow = () => {
+    const now = new Date();
+    // Input expects YYYY-MM-DD
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    setEntryDate(`${y}-${m}-${d}`);
+    
+    // Input expects HH:MM (24h)
+    setEntryTime(now.toTimeString().slice(0, 5));
+};
+
 const handleSave = (e: React.FormEvent) => {
 e.preventDefault();
 const cleanValues: MetricValues = {};
@@ -348,10 +371,10 @@ setNewEntryValues({});
 alert("Data saved successfully!");
 };
 
-const handleInputChange = (id: string, val: string) => {
+const handleInputChange = (id: string, val: string | number | null) => {
 setNewEntryValues(prev => ({
 ...prev,
-[id]: val === '' ? null : parseFloat(val)
+[id]: val === '' ? null : (typeof val === 'string' ? parseFloat(val) : val)
 }));
 };
 
@@ -399,18 +422,32 @@ return vals;
 
 const handlePrintReport = () => {
     const regimen = db.getRegimen();
-    const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const y = now.getFullYear();
+    let dateStr = `${y}-${m}-${d}`;
+    if (appSettings.dateFormat === 'DD.MM.YYYY') dateStr = `${d}.${m}.${y}`;
+    if (appSettings.dateFormat === 'MM/DD/YYYY') dateStr = `${m}/${d}/${y}`;
 
     // Helper: Recency text
     const getRecencyLabel = (timestamp: string) => {
         const date = new Date(timestamp);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
+        const diffMs = new Date().getTime() - date.getTime();
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        
         if (diffDays === 0) return 'Today';
         if (diffDays === 1) return 'Yesterday';
         if (diffDays < 30) return `${diffDays}d ago`;
-        return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+
+        const rd = String(date.getDate()).padStart(2, '0');
+        const rm = String(date.getMonth() + 1).padStart(2, '0');
+        const ry = String(date.getFullYear()).slice(-2);
+        
+        if (appSettings.dateFormat === 'DD.MM.YYYY') return `${rd}.${rm}.${ry}`;
+        if (appSettings.dateFormat === 'MM/DD/YYYY') return `${rm}/${rd}/${ry}`;
+        return `${ry}-${rm}-${rd}`; // Fallback small ISO
     };
 
     // 1. Render Metrics Grid HTML
@@ -821,6 +858,7 @@ value={value}
 status={status}
 timestamp={timestamp}
 onClick={() => handleMetricClick(m.id)}
+dateFormat={appSettings.dateFormat}
 />
 );
 })}
@@ -880,23 +918,35 @@ activeFormCategory === cat
         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
             <Calendar className="w-3.5 h-3.5" /> Date
         </label>
-        <input 
-            type="date" 
-            value={entryDate}
-            onChange={(e) => setEntryDate(e.target.value)}
-            className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium"
-        />
+        <div className="flex gap-2">
+            <FormattedDateInput
+                value={entryDate}
+                onChange={setEntryDate}
+                format={appSettings.dateFormat}
+                className="flex-1"
+            />
+        </div>
     </div>
     <div>
         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
              <Clock className="w-3.5 h-3.5" /> Time
         </label>
-         <input 
-            type="time" 
-            value={entryTime}
-            onChange={(e) => setEntryTime(e.target.value)}
-            className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium"
-        />
+        <div className="flex gap-2">
+            <FormattedTimeInput
+                value={entryTime}
+                onChange={setEntryTime}
+                format={appSettings.timeFormat}
+                className="flex-1"
+            />
+            <button 
+                type="button" 
+                onClick={setNow} 
+                className="px-3 py-2 bg-slate-100 text-slate-600 rounded-md hover:bg-indigo-50 hover:text-indigo-600 transition-colors border border-slate-200 text-sm font-medium flex items-center gap-1 whitespace-nowrap"
+                title="Set to Current Time"
+            >
+                <RotateCcw className="w-3 h-3" /> Now
+            </button>
+        </div>
     </div>
 </div>
 
@@ -905,6 +955,12 @@ activeFormCategory === cat
     // BOOLEAN (Yes/No or Male/Female) Input Render Logic
     // Detects if metric is 0-1 range with step 1.
     const isBoolean = m.range[0] === 0 && m.range[1] === 1 && m.step === 1;
+    
+    // Check if Time-based (Duration) input needed
+    // PRIORITIZE EXPLICIT CONFIG, FALLBACK TO HEURISTIC FOR LEGACY/MIGRATION
+    const isTimeBased = m.isTimeBased !== undefined 
+        ? m.isTimeBased 
+        : (m.unit && (m.unit.toLowerCase().includes('hour') || m.unit.toLowerCase() === 'h'));
     
     return (
     <div key={m.id}>
@@ -933,6 +989,13 @@ activeFormCategory === cat
                     </>
                 )}
             </select>
+        ) : isTimeBased ? (
+            <FormattedDurationInput 
+                value={newEntryValues[m.id] as number}
+                onChange={(val) => handleInputChange(m.id, val)}
+                unit={m.unit}
+                placeholder={`${m.range[0]}:${String(Math.round((m.range[0] % 1) * 60)).padStart(2,'0')}`}
+            />
         ) : (
             <input
                 type="number"
@@ -994,6 +1057,7 @@ Save Entry
     metrics={metrics.filter(m => m.active)} 
     selectedMetrics={historySelectedMetrics}
     onSelectionChange={setHistorySelectedMetrics}
+    settings={appSettings}
 />
 </div>
 )}
@@ -1009,6 +1073,8 @@ metrics={metrics}
 onUpdate={handleMetricsUpdate}
 onRename={handleMetricRename}
 onFactoryReset={handleFactoryReset}
+settings={appSettings}
+onSettingsChange={handleSettingsUpdate}
 />
 </div>
 )}
