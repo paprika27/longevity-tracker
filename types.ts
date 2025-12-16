@@ -37,6 +37,7 @@ export interface FeedbackItem {
   metricId: string;
   metricName: string;
   value: number;
+  displayValue?: string | number;
   status: StatusLevel;
   message: string;
   citation: string;

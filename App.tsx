@@ -97,7 +97,6 @@ const App: React.FC = () => {
     };
 
     const handleMetricRename = (oldId: string, newId: string, newConfig: MetricConfig): boolean => {
-        // Merge Logic (Keep existing implementation)
         const targetMetric = metrics.find(m => m.id === newId && m.id !== oldId);
         if (targetMetric) {
             if (!window.confirm(`Metric ID '${newId}' already exists. Merge?`)) return false;
@@ -149,12 +148,8 @@ const App: React.FC = () => {
 
     // --- DERIVED STATE ---
 
-    // 1. Calculate Derived Metrics (Formulas)
     const processedEntries = useMemo(() => {
         const calculatedMetrics = metrics.filter(m => m.isCalculated && m.formula);
-        // We must calculate even if no calculated metrics exist? No, but typically there are some.
-        // We iterate through all entries to produce a 'hydrated' set of entries with calculated values.
-        
         const sortedEntries = [...entries].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         const runningValues: MetricValues = {};
 
@@ -165,7 +160,6 @@ const App: React.FC = () => {
             const context = { ...runningValues };
             const newValues = { ...entry.values };
 
-            // Library injection for formula evaluation
             const lib = {
                 ...calculators,
                 sum: (id: string, period: string | number) => formulaLib.sum(sortedEntries, id, period, entry.timestamp)
@@ -187,11 +181,8 @@ const App: React.FC = () => {
         });
     }, [entries, metrics]);
 
-    // 2. Compute Dashboard State (Aggregating latest value + Streaks)
     const dashboardState = useMemo(() => {
         const state: Record<string, MetricStatusData> = {};
-
-        // A. Latest Value Map
         const latestValues: Record<string, {val: number, ts: string}> = {};
         processedEntries.forEach(entry => {
             Object.entries(entry.values).forEach(([key, val]) => {
@@ -201,17 +192,12 @@ const App: React.FC = () => {
             });
         });
 
-        // B. Process Metrics
         metrics.forEach(m => {
             if (!m.active) return;
-            
-            // 1. Snapshot Data (Latest)
             const latest = latestValues[m.id];
             
-            // 2. Streak Calculation (If category is 'daily')
             let streak = 0;
             if (m.category === 'daily') {
-                // Create map of DateString -> Value for this metric
                 const dailyMap: Record<string, number> = {};
                 processedEntries.forEach(e => {
                      const dateStr = toIsoDate(new Date(e.timestamp));
@@ -220,49 +206,29 @@ const App: React.FC = () => {
                      }
                 });
                 
-                // Count backwards from Yesterday (or Today if logged)
                 const checkDate = new Date();
                 const todayStr = toIsoDate(checkDate);
-                
                 let currentCheck = new Date(checkDate);
                 if (!dailyMap[todayStr]) {
                     currentCheck.setDate(currentCheck.getDate() - 1);
                 }
 
-                // Max streak lookback 365 days
                 for (let i = 0; i < 365; i++) {
                      const dStr = toIsoDate(currentCheck);
                      const val = dailyMap[dStr];
                      if (val !== undefined) {
                          const s = getStatus(val, m.range);
-                         if (s === StatusLevel.GOOD || s === StatusLevel.FAIR) {
-                             streak++;
-                         } else {
-                             break; // Broken streak
-                         }
-                     } else {
-                         // Missing day breaks streak
-                         break;
-                     }
+                         if (s === StatusLevel.GOOD || s === StatusLevel.FAIR) streak++;
+                         else break;
+                     } else break;
                      currentCheck.setDate(currentCheck.getDate() - 1);
                 }
             }
 
-            // Determine Status
             let computedStatus = StatusLevel.UNKNOWN;
-            
             if (latest) {
-                // For 'weekly' calculated metrics (like Rowing Volume), 'latest.val' IS the weekly sum 
-                // computed by formulaLib. So we just compare it to the range.
                 if (m.category === 'weekly') {
-                     // Check "On Pace" logic? 
-                     // range[0] is the weekly Target.
-                     // latest.val is current progress this week.
-                     // The simple status (GOOD/POOR) is based on whether they hit the min target.
-                     // However, early in the week, they will naturally be below target.
-                     // So showing 'POOR' on Monday for having 0/120 minutes is discouraging.
-                     // Let's use Pro-Rated Status for the Badge
-                     const dayOfWeek = (new Date().getDay() + 6) % 7 + 1; // 1 (Mon) - 7 (Sun)
+                     const dayOfWeek = (new Date().getDay() + 6) % 7 + 1;
                      const expected = (m.range[0] / 7) * dayOfWeek;
                      if (latest.val >= expected) computedStatus = StatusLevel.GOOD;
                      else if (latest.val >= expected * 0.7) computedStatus = StatusLevel.FAIR;
@@ -272,7 +238,6 @@ const App: React.FC = () => {
                 }
             }
 
-            // Construct Weekly Progress Object if category is weekly
             let weeklyProgress = undefined;
             if (m.category === 'weekly' && latest) {
                 weeklyProgress = {
@@ -294,41 +259,26 @@ const App: React.FC = () => {
         return state;
     }, [processedEntries, metrics]);
 
-    // 3. COACHING LOGIC
     const coachingData = useMemo(() => {
         const todayStr = toIsoDate(new Date());
-        
-        // A. Missing Daily Metrics
-        // Metrics that are 'daily' and NOT calculated, which haven't been logged today.
         const missingDaily = metrics.filter(m => 
-            m.active && 
-            m.category === 'daily' && 
-            !m.isCalculated &&
+            m.active && m.category === 'daily' && !m.isCalculated &&
             (!dashboardState[m.id].timestamp || !dashboardState[m.id].timestamp!.startsWith(todayStr))
         );
 
-        // B. Weekly Metrics Progress (All of them, to show progress regardless of status)
         const weeklyMetrics = metrics
             .filter(m => m.active && m.category === 'weekly' && dashboardState[m.id].weeklyProgress)
             .map(m => {
                 const prog = dashboardState[m.id].weeklyProgress!;
-                // Calculate Risk Flag
-                const dayOfWeek = (new Date().getDay() + 6) % 7 + 1; // 1-7
+                const dayOfWeek = (new Date().getDay() + 6) % 7 + 1;
                 const expected = (prog.target / 7) * dayOfWeek;
                 const isAtRisk = prog.current < expected * 0.8;
-                
-                return {
-                    config: m,
-                    current: prog.current,
-                    target: prog.target,
-                    isAtRisk
-                };
+                return { config: m, current: prog.current, target: prog.target, isAtRisk };
             });
 
         return { missingDaily, weeklyMetrics };
     }, [metrics, dashboardState]);
 
-    // 4. Feedback Logic
     const displayedFeedback = useMemo(() => {
         const items: FeedbackItem[] = [];
         metrics.filter(m => m.active).forEach(m => {
@@ -339,6 +289,7 @@ const App: React.FC = () => {
                 const status = data.status;
                 if (feedbackStatusFilter !== 'all' && status.toLowerCase() !== feedbackStatusFilter) return;
 
+                // Format the value for display (handles time based e.g. 7.5 -> 7:30)
                 const valStr = m.isTimeBased ? formatDuration(data.value) : data.value;
                 let msg = "";
                 
@@ -348,15 +299,16 @@ const App: React.FC = () => {
                      else if (status === StatusLevel.FAIR) msg = `Keep pushing. You are at ${pct}% of your weekly target.`;
                      else msg = `You are behind schedule (${pct}%). Try to squeeze in a session.`;
                 } else {
-                    if (status === StatusLevel.GOOD) msg = `Great job! Your ${m.name} (${valStr} ${m.unit}) is in the optimal range.`;
-                    else if (status === StatusLevel.FAIR) msg = `Close! Your ${m.name} (${valStr} ${m.unit}) is near the target range.`;
-                    else msg = `Your ${m.name} (${valStr} ${m.unit}) is outside the target range.`;
+                    if (status === StatusLevel.GOOD) msg = `Great job! Your ${m.name} is in the optimal range.`;
+                    else if (status === StatusLevel.FAIR) msg = `Close! Your ${m.name} is near the target range.`;
+                    else msg = `Your ${m.name} is outside the target range.`;
                 }
 
                 items.push({
                     metricId: m.id,
                     metricName: m.name,
                     value: data.value,
+                    displayValue: valStr, // Use the formatted string
                     status,
                     message: msg,
                     citation: m.fact
@@ -373,11 +325,12 @@ const App: React.FC = () => {
         });
     }, [dashboardState, metrics, dismissedFeedback, feedbackStatusFilter, pinnedFeedback]);
 
-    // 5. Grid Metrics
     const gridMetrics = useMemo(() => {
         let result = metrics.filter(m => m.active);
         if (searchTerm) result = result.filter(m => m.name.toLowerCase().includes(searchTerm.toLowerCase()));
         if (categoryFilter !== 'all') result = result.filter(m => m.category === categoryFilter);
+        
+        // Status Filter Logic
         if (metricFilter !== 'all') {
             result = result.filter(m => {
                 const data = dashboardState[m.id];
@@ -412,9 +365,7 @@ const App: React.FC = () => {
         return result;
     }, [metrics, metricFilter, metricSort, dashboardState, searchTerm, categoryFilter]);
 
-
-    // --- HANDLERS ---
-    
+    // ... handlers ...
     const setNow = () => {
         const now = new Date();
         setEntryDate(toIsoDate(now));
@@ -474,7 +425,6 @@ const App: React.FC = () => {
     }, [dashboardState]);
 
     const handlePrintReport = () => {
-        // Simple printable view generator
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
@@ -488,7 +438,6 @@ const App: React.FC = () => {
             <body class="p-8 bg-white text-slate-900">
                 <h1 class="text-2xl font-bold mb-2">Longevity Tracker Report</h1>
                 <p class="text-slate-500 mb-8">Generated on ${new Date().toLocaleString()}</p>
-                
                 <h2 class="text-xl font-bold border-b pb-2 mb-4">Current Status</h2>
                 <div class="grid grid-cols-4 gap-4 mb-8">
                     ${gridMetrics.map(m => {
@@ -504,11 +453,6 @@ const App: React.FC = () => {
                         `;
                     }).join('')}
                 </div>
-
-                <h2 class="text-xl font-bold border-b pb-2 mb-4">Analysis</h2>
-                <ul class="list-disc pl-5 space-y-2 mb-8">
-                    ${displayedFeedback.map(f => `<li><strong>${f.metricName}:</strong> ${f.message} <span class="text-slate-400 text-sm">(${f.citation})</span></li>`).join('')}
-                </ul>
             </body>
             </html>
         `;
@@ -519,7 +463,6 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen pb-12 bg-slate-50">
-            {/* Header */}
             <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-indigo-600">
@@ -556,7 +499,6 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* COACH BANNER */}
                         <CoachBanner 
                             missingDailyMetrics={coachingData.missingDaily} 
                             weeklyMetrics={coachingData.weeklyMetrics}
@@ -578,7 +520,6 @@ const App: React.FC = () => {
                                         <RadarView metrics={metrics} values={radarValues} />
                                     </div>
                                     <div className="lg:col-span-2 space-y-4">
-                                        {/* Feedback Section */}
                                         <div className="flex flex-wrap justify-between items-center gap-3">
                                             <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
                                                 <Quote className="w-5 h-5 text-indigo-500" /> Analysis & Evidence
@@ -616,7 +557,8 @@ const App: React.FC = () => {
                                                         <h4 className="font-semibold text-slate-800 flex items-center gap-2">
                                                             {pinnedFeedback.includes(item.metricId) && <Pin className="w-3 h-3 text-slate-500 fill-slate-500" />} {item.metricName}
                                                         </h4>
-                                                        <span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{item.value}</span>
+                                                        {/* FIXED: Uses displayValue for proper time formatting */}
+                                                        <span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{item.displayValue || item.value}</span>
                                                      </div>
                                                      <p className="text-sm text-slate-700 mt-1">{item.message}</p>
                                                 </div>
@@ -625,7 +567,6 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Metric Cards Grid Controls */}
                                 <div>
                                     <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
                                         <h3 className="text-lg font-semibold text-slate-700 whitespace-nowrap">Detailed Metrics</h3>
@@ -636,11 +577,13 @@ const App: React.FC = () => {
                                             </div>
                                             
                                             <div className="flex gap-2 flex-wrap">
+                                                {/* Category Filter */}
                                                 <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[100px]">
                                                     <option value="all">All Cats</option>
                                                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
 
+                                                {/* Status Filter - Restored/Ensured */}
                                                 <select value={metricFilter} onChange={(e) => setMetricFilter(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="all">All Status</option>
                                                     <option value="good">Good (Green)</option>
@@ -649,6 +592,7 @@ const App: React.FC = () => {
                                                     <option value="unknown">No Data</option>
                                                 </select>
 
+                                                {/* Sorting Dropdown - Updated Recently / Streak Added */}
                                                 <select value={metricSort} onChange={(e) => setMetricSort(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="default">Default</option>
                                                     <option value="name">Name</option>
@@ -681,7 +625,6 @@ const App: React.FC = () => {
                 {view === 'history' && <HistoryView entries={processedEntries} metrics={metrics.filter(m => m.active)} selectedMetrics={historySelectedMetrics} onSelectionChange={setHistorySelectedMetrics} settings={appSettings} />}
                 {view === 'settings' && <MetricManager metrics={metrics} onUpdate={handleMetricsUpdate} onRename={handleMetricRename} onFactoryReset={handleFactoryReset} settings={appSettings} onSettingsChange={handleSettingsUpdate} />}
                 
-                {/* Entry View */}
                 {view === 'entry' && (
                      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="bg-slate-50 border-b border-slate-200 px-6 py-4">
@@ -701,7 +644,6 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
-                                {/* Only show NON-calculated metrics in the form */}
                                 {metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).map(m => {
                                     const isBool = m.range[0] === 0 && m.range[1] === 1 && m.step === 1;
                                     const isTime = m.isTimeBased !== undefined ? m.isTimeBased : (m.unit && m.unit.includes('hour'));
