@@ -2,6 +2,7 @@
 import React from 'react';
 import { MetricConfig, StatusLevel, DateFormat } from '../types';
 import { Smile, Meh, Frown, HelpCircle, Clock } from 'lucide-react';
+import { formatDuration } from './FormattedInputs';
 
 interface MetricCardProps {
 config: MetricConfig;
@@ -76,6 +77,11 @@ percentage = 50;
 }
 }
 
+// FORMAT VALUES IF TIME-BASED
+const displayValue = config.isTimeBased && value !== null ? formatDuration(value) : (value !== null ? value : '--');
+const displayRangeMin = config.isTimeBased ? formatDuration(config.range[0]) : config.range[0];
+const displayRangeMax = config.isTimeBased ? formatDuration(config.range[1]) : config.range[1];
+
 return (
 <div 
   onClick={onClick}
@@ -92,7 +98,7 @@ return (
 <div className="flex justify-between items-start mb-2">
 <div>
 <h3 className="text-sm font-semibold text-slate-700">{config.name}</h3>
-<p className="text-xs text-slate-500">Target: {config.range[0]} - {config.range[1]} {config.unit}</p>
+<p className="text-xs text-slate-500">Target: {displayRangeMin} - {displayRangeMax} {config.unit}</p>
 </div>
 <div>{getIcon()}</div>
 </div>
@@ -100,7 +106,7 @@ return (
 <div className="mt-2">
 <div className="flex items-baseline gap-2">
 <span className="text-2xl font-bold text-slate-800">
-{value !== null ? value : '--'}
+{displayValue}
 </span>
 <span className="text-xs text-slate-500">{config.unit}</span>
 

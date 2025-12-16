@@ -3,6 +3,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Clock, Timer } from 'lucide-react';
 import { DateFormat, TimeFormat } from '../types';
 
+// UTILITY EXPORT
+export const formatDuration = (val: number | null | undefined): string => {
+    if (val === null || val === undefined || isNaN(val)) return '--';
+    const h = Math.floor(val);
+    const m = Math.round((val - h) * 60);
+    return `${h}:${String(m).padStart(2, '0')}`;
+};
+
 interface FormattedDateInputProps {
   value: string; // ISO YYYY-MM-DD
   onChange: (val: string) => void;
@@ -280,9 +288,7 @@ export const FormattedDurationInput: React.FC<FormattedDurationInputProps> = ({ 
     // Convert decimal (6.5) to "6:30"
     const toTimeStr = (val: number | null) => {
         if (val === null || val === undefined || isNaN(val)) return '';
-        const h = Math.floor(val);
-        const m = Math.round((val - h) * 60);
-        return `${h}:${String(m).padStart(2, '0')}`;
+        return formatDuration(val);
     };
 
     // Convert "6:30" to decimal 6.5

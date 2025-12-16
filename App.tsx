@@ -9,7 +9,7 @@ import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
-import { FormattedDateInput, FormattedTimeInput, FormattedDurationInput } from './components/FormattedInputs';
+import { FormattedDateInput, FormattedTimeInput, FormattedDurationInput, formatDuration } from './components/FormattedInputs';
 import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock, RotateCcw } from 'lucide-react';
 import { DEFAULT_SETTINGS } from './constants';
 
@@ -226,13 +226,15 @@ metrics.filter(m => m.active).forEach(m => {
 const data = dashboardState[m.id];
 if (data) {
 const status = getStatus(data.value, m.range);
+const valStr = m.isTimeBased ? formatDuration(data.value) : data.value;
+
 let msg = "";
 if (status === StatusLevel.GOOD) {
-msg = `Great job! Your ${m.name} (${data.value} ${m.unit}) is in the optimal range.`;
+msg = `Great job! Your ${m.name} (${valStr} ${m.unit}) is in the optimal range.`;
 } else if (status === StatusLevel.FAIR) {
-msg = `Close! Your ${m.name} (${data.value} ${m.unit}) is near the target range.`;
+msg = `Close! Your ${m.name} (${valStr} ${m.unit}) is near the target range.`;
 } else {
-msg = `Your ${m.name} (${data.value} ${m.unit}) is outside the target range.`;
+msg = `Your ${m.name} (${valStr} ${m.unit}) is outside the target range.`;
 }
 items.push({
 metricId: m.id,
@@ -458,16 +460,20 @@ const handlePrintReport = () => {
         const color = status === StatusLevel.GOOD ? '#22c55e' : status === StatusLevel.FAIR ? '#eab308' : '#ef4444';
         const bg = status === StatusLevel.GOOD ? '#f0fdf4' : status === StatusLevel.FAIR ? '#fefce8' : '#fef2f2';
         const recency = getRecencyLabel(data.timestamp);
+        
+        const displayVal = m.isTimeBased ? formatDuration(data.value) : data.value;
+        const displayMin = m.isTimeBased ? formatDuration(m.range[0]) : m.range[0];
+        const displayMax = m.isTimeBased ? formatDuration(m.range[1]) : m.range[1];
 
         return `
         <div style="break-inside: avoid; border: 1px solid ${color}40; background: ${bg}; padding: 12px; border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between;">
             <div>
                 <div style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: bold;">${m.name}</div>
                 <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 4px;">
-                    <span style="font-size: 18px; font-weight: bold; color: #0f172a;">${data.value}</span>
+                    <span style="font-size: 18px; font-weight: bold; color: #0f172a;">${displayVal}</span>
                     <span style="font-size: 10px; color: #64748b;">${m.unit}</span>
                 </div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Target: ${m.range[0]} - ${m.range[1]}</div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Target: ${displayMin} - ${displayMax}</div>
             </div>
             <div style="font-size: 9px; color: #94a3b8; margin-top: 8px; text-align: right; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 4px;">
                ${recency}
@@ -736,39 +742,45 @@ Analysis & Evidence
     )}
 </div>
 ) : (
-displayedFeedback.map(item => (
-<div key={item.metricId} className={`relative p-4 rounded-lg border-l-4 group transition-all ${
-item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' :
-item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'
-}`}>
-<div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-<button
-onClick={() => toggleFeedbackPin(item.metricId)}
-className={`p-1 rounded hover:bg-black/5 ${pinnedFeedback.includes(item.metricId) ? 'text-slate-800' : 'text-slate-400'}`}
-title="Pin to top"
->
-<Pin className={`w-3.5 h-3.5 ${pinnedFeedback.includes(item.metricId) ? 'fill-current' : ''}`} />
-</button>
-<button
-onClick={() => dismissFeedback(item.metricId)}
-className="p-1 rounded hover:bg-black/5 text-slate-400 hover:text-slate-600"
-title="Dismiss"
->
-<X className="w-3.5 h-3.5" />
-</button>
-</div>
+displayedFeedback.map(item => {
+    // Determine the formatted value string for display
+    const m = metrics.find(metric => metric.id === item.metricId);
+    const displayVal = m && m.isTimeBased ? formatDuration(item.value) : item.value;
+    
+    return (
+    <div key={item.metricId} className={`relative p-4 rounded-lg border-l-4 group transition-all ${
+    item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' :
+    item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'
+    }`}>
+    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+    <button
+    onClick={() => toggleFeedbackPin(item.metricId)}
+    className={`p-1 rounded hover:bg-black/5 ${pinnedFeedback.includes(item.metricId) ? 'text-slate-800' : 'text-slate-400'}`}
+    title="Pin to top"
+    >
+    <Pin className={`w-3.5 h-3.5 ${pinnedFeedback.includes(item.metricId) ? 'fill-current' : ''}`} />
+    </button>
+    <button
+    onClick={() => dismissFeedback(item.metricId)}
+    className="p-1 rounded hover:bg-black/5 text-slate-400 hover:text-slate-600"
+    title="Dismiss"
+    >
+    <X className="w-3.5 h-3.5" />
+    </button>
+    </div>
 
-<div className="flex justify-between items-start pr-8">
-<h4 className="font-semibold text-slate-800 flex items-center gap-2">
-{pinnedFeedback.includes(item.metricId) && <Pin className="w-3 h-3 text-slate-500 fill-slate-500" />}
-{item.metricName}
-</h4>
-<span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{item.value}</span>
-</div>
-<p className="text-sm text-slate-700 mt-1">{item.message}</p>
-<p className="text-xs text-slate-500 mt-2 italic border-t border-black/5 pt-2">"{item.citation}"</p>
-</div>
-))
+    <div className="flex justify-between items-start pr-8">
+    <h4 className="font-semibold text-slate-800 flex items-center gap-2">
+    {pinnedFeedback.includes(item.metricId) && <Pin className="w-3 h-3 text-slate-500 fill-slate-500" />}
+    {item.metricName}
+    </h4>
+    <span className="text-xs font-mono bg-white/50 px-2 py-0.5 rounded text-slate-600">{displayVal}</span>
+    </div>
+    <p className="text-sm text-slate-700 mt-1">{item.message}</p>
+    <p className="text-xs text-slate-500 mt-2 italic border-t border-black/5 pt-2">"{item.citation}"</p>
+    </div>
+)
+})
 )}
 </div>
 </div>

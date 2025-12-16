@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush, ReferenceArea } from 'recharts';
 import { LogEntry, MetricConfig, AppSettings } from '../types';
 import { XCircle } from 'lucide-react';
+import { formatDuration } from './FormattedInputs';
 
 interface HistoryViewProps {
   entries: LogEntry[];
@@ -229,14 +230,21 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                     axisLine={false}
                     domain={['auto', 'auto']}
                     width={60}
-                    tickFormatter={(val) => commonUnit ? `${val} ${commonUnit}` : `${val}`}
+                    tickFormatter={(val) => {
+                        // If single metric and it's time based, format Y axis as time
+                        if (activeMetricConfigs.length === 1 && activeMetricConfigs[0].isTimeBased) {
+                            return formatDuration(val);
+                        }
+                        return commonUnit ? `${val} ${commonUnit}` : `${val}`;
+                    }}
                 />
                 <Tooltip 
                     labelFormatter={formatTooltipLabel}
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     formatter={(value: number, name: string, item: any) => {
                         const m = metrics.find(met => met.id === item.dataKey);
-                        return [`${value} ${m?.unit || ''}`, m?.name || name];
+                        const formatted = m?.isTimeBased ? formatDuration(value) : value;
+                        return [`${formatted} ${m?.unit || ''}`, m?.name || name];
                     }}
                 />
                 <Legend wrapperStyle={{ paddingTop: '10px' }}/>
@@ -275,7 +283,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
             {/* Range Label Overlay (for better visibility than ReferenceArea label which can be clipped) */}
             {showRange && singleMetric && (
                  <div className="absolute top-4 right-12 bg-green-50 text-green-700 text-[10px] px-2 py-1 rounded border border-green-100 shadow-sm pointer-events-none opacity-80">
-                     Target: {singleMetric.range[0]} - {singleMetric.range[1]} {singleMetric.unit}
+                     Target: {singleMetric.isTimeBased ? formatDuration(singleMetric.range[0]) : singleMetric.range[0]} - {singleMetric.isTimeBased ? formatDuration(singleMetric.range[1]) : singleMetric.range[1]} {singleMetric.unit}
                  </div>
             )}
             
