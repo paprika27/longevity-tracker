@@ -8,7 +8,7 @@ import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer } from 'lucide-react';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock } from 'lucide-react';
 
 // Helper to determine status
 const getStatus = (val: number, range: [number, number]): StatusLevel => {
@@ -30,6 +30,10 @@ const [metrics, setMetrics] = useState<MetricConfig[]>([]);
 const [categories, setCategories] = useState<string[]>([]);
 const [newEntryValues, setNewEntryValues] = useState<MetricValues>({});
 
+// Entry Date/Time State
+const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
+const [entryTime, setEntryTime] = useState(() => new Date().toTimeString().slice(0, 5));
+
 // History State
 const [historySelectedMetrics, setHistorySelectedMetrics] = useState<string[]>(['bmi']);
 
@@ -43,8 +47,10 @@ try { return JSON.parse(localStorage.getItem('lt_dismissed_feedback') || '[]'); 
 const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<'all' | 'good' | 'fair' | 'poor'>('all');
 
 // Metrics Grid State
+const [searchTerm, setSearchTerm] = useState('');
+const [categoryFilter, setCategoryFilter] = useState('all');
 const [metricSort, setMetricSort] = useState<'default' | 'name' | 'status' | 'recency'>('default');
-const [metricFilter, setMetricFilter] = useState<'all' | 'good' | 'fair' | 'poor'>('all');
+const [metricFilter, setMetricFilter] = useState<'all' | 'good' | 'fair' | 'poor' | 'unknown'>('all');
 
 // Form Categories
 const [activeFormCategory, setActiveFormCategory] = useState<string>('daily');
@@ -256,11 +262,24 @@ const displayedFeedback = useMemo(() => {
 const gridMetrics = useMemo(() => {
 let result = metrics.filter(m => m.active);
 
-// Filter
+// Search Filter
+if (searchTerm) {
+    result = result.filter(m => m.name.toLowerCase().includes(searchTerm.toLowerCase()));
+}
+
+// Category Filter
+if (categoryFilter !== 'all') {
+    result = result.filter(m => m.category === categoryFilter);
+}
+
+// Status Filter
 if (metricFilter !== 'all') {
 result = result.filter(m => {
 const data = dashboardState[m.id];
-if (!data) return false; // Hide unknown if filtering
+if (metricFilter === 'unknown') {
+    return !data || data.value === null;
+}
+if (!data) return false; 
 const status = getStatus(data.value, m.range);
 return status.toLowerCase() === metricFilter;
 });
@@ -292,7 +311,7 @@ return 0;
 });
 
 return result;
-}, [metrics, metricFilter, metricSort, dashboardState]);
+}, [metrics, metricFilter, metricSort, dashboardState, searchTerm, categoryFilter]);
 
 
 // --- HANDLERS ---
@@ -309,9 +328,28 @@ cleanValues[k] = newEntryValues[k];
 
 if (Object.keys(cleanValues).length === 0) return;
 
-db.saveEntry(cleanValues);
+// Construct Timestamp from Date/Time Inputs
+let timestampStr = new Date().toISOString();
+try {
+    const combined = new Date(`${entryDate}T${entryTime}`);
+    // Check if valid date
+    if (!isNaN(combined.getTime())) {
+        timestampStr = combined.toISOString();
+    }
+} catch (e) {
+    console.error("Invalid date/time, using current time");
+}
+
+db.saveEntry(cleanValues, timestampStr);
 setEntries(db.getEntries());
 setNewEntryValues({});
+
+// Reset to current time for next entry? Or keep same day? 
+// Usually resetting to now is safer to prevent accidental backdating of next entry.
+const now = new Date();
+setEntryDate(now.toISOString().split('T')[0]);
+setEntryTime(now.toTimeString().slice(0, 5));
+
 setView('dashboard');
 };
 
@@ -706,38 +744,70 @@ title="Dismiss"
 
 {/* Metric Cards Grid */}
 <div>
-<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-<h3 className="text-lg font-semibold text-slate-700">Detailed Metrics</h3>
-<div className="flex gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-{/* Sort Dropdown */}
-<div className="relative flex items-center border-r border-slate-100 pr-2 mr-1">
-<ArrowUpDown className="w-3 h-3 text-slate-400 absolute left-2 pointer-events-none" />
-<select
-value={metricSort}
-onChange={(e) => setMetricSort(e.target.value as any)}
-className="pl-7 pr-2 py-1 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer"
->
-<option value="default">Default Sort</option>
-<option value="name">Name</option>
-<option value="recency">Recently Updated</option>
-<option value="status">Status Priority</option>
-</select>
-</div>
+<div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+<h3 className="text-lg font-semibold text-slate-700 whitespace-nowrap">Detailed Metrics</h3>
 
-{/* Filter Dropdown */}
-<div className="relative flex items-center">
-<Filter className="w-3 h-3 text-slate-400 absolute left-2 pointer-events-none" />
-<select
-value={metricFilter}
-onChange={(e) => setMetricFilter(e.target.value as any)}
-className="pl-7 pr-2 py-1 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer"
->
-<option value="all">All Statuses</option>
-<option value="good">Good Only</option>
-<option value="fair">Fair Only</option>
-<option value="poor">Poor Only</option>
-</select>
-</div>
+<div className="w-full md:w-auto flex flex-col sm:flex-row gap-2">
+    {/* Search Box */}
+    <div className="relative flex-1 sm:flex-initial">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+        <input 
+            type="text" 
+            placeholder="Search..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:w-40 pl-9 pr-3 py-1.5 text-xs rounded-lg border-slate-200 focus:border-indigo-500 focus:ring-indigo-500 bg-white shadow-sm"
+        />
+    </div>
+
+    {/* Filter Group */}
+    <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0">
+        {/* Category Select */}
+        <div className="relative flex items-center bg-white border border-slate-200 rounded-lg shadow-sm">
+            <Filter className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
+            <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="pl-8 pr-2 py-1.5 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer min-w-[100px]"
+            >
+                <option value="all">All Cats</option>
+                {categories.map(cat => (
+                    <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                ))}
+            </select>
+        </div>
+
+        {/* Status Select */}
+        <div className="relative flex items-center bg-white border border-slate-200 rounded-lg shadow-sm">
+            <Activity className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
+            <select
+                value={metricFilter}
+                onChange={(e) => setMetricFilter(e.target.value as any)}
+                className="pl-8 pr-2 py-1.5 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer min-w-[100px]"
+            >
+                <option value="all">All Status</option>
+                <option value="good">Good</option>
+                <option value="fair">Fair</option>
+                <option value="poor">Poor</option>
+                <option value="unknown">No Data</option>
+            </select>
+        </div>
+
+        {/* Sort Select */}
+        <div className="relative flex items-center bg-white border border-slate-200 rounded-lg shadow-sm">
+            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
+            <select
+                value={metricSort}
+                onChange={(e) => setMetricSort(e.target.value as any)}
+                className="pl-8 pr-2 py-1.5 text-xs border-none bg-transparent focus:ring-0 text-slate-600 font-medium cursor-pointer min-w-[100px]"
+            >
+                <option value="default">Default</option>
+                <option value="name">Name</option>
+                <option value="recency">Recent</option>
+                <option value="status">Status</option>
+            </select>
+        </div>
+    </div>
 </div>
 </div>
 
@@ -808,6 +878,33 @@ activeFormCategory === cat
 </div>
 
 <form onSubmit={handleSave} className="p-6 sm:p-8">
+
+{/* DATE & TIME INPUTS */}
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 pb-8 border-b border-slate-100">
+    <div>
+        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5" /> Date
+        </label>
+        <input 
+            type="date" 
+            value={entryDate}
+            onChange={(e) => setEntryDate(e.target.value)}
+            className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium"
+        />
+    </div>
+    <div>
+        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+             <Clock className="w-3.5 h-3.5" /> Time
+        </label>
+         <input 
+            type="time" 
+            value={entryTime}
+            onChange={(e) => setEntryTime(e.target.value)}
+            className="w-full rounded-md border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-4 py-2 border bg-white text-slate-900 font-medium"
+        />
+    </div>
+</div>
+
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-6">
 {metrics.filter(m => m.category === activeFormCategory && m.active && !m.isCalculated).map(m => {
     // BOOLEAN (Yes/No or Male/Female) Input Render Logic
