@@ -66,8 +66,16 @@ percentage = 50;
 return (
 <div 
   onClick={onClick}
-  className={`p-4 rounded-xl border ${getBorderColor()} shadow-sm transition-all duration-200 hover:shadow-md ${onClick ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
+  className={`relative group p-4 rounded-xl border ${getBorderColor()} shadow-sm transition-all duration-200 hover:shadow-md hover:z-10 ${onClick ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
 >
+{/* Tooltip Hover State */}
+<div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-800 text-white text-xs p-3 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 backdrop-blur-sm">
+    <p className="font-medium mb-1 leading-snug">{config.fact}</p>
+    <p className="text-slate-400 italic font-light border-t border-slate-700 pt-1 mt-1">{config.citation}</p>
+    {/* Tooltip Arrow */}
+    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+</div>
+
 <div className="flex justify-between items-start mb-2">
 <div>
 <h3 className="text-sm font-semibold text-slate-700">{config.name}</h3>
