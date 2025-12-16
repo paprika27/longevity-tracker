@@ -344,13 +344,8 @@ db.saveEntry(cleanValues, timestampStr);
 setEntries(db.getEntries());
 setNewEntryValues({});
 
-// Reset to current time for next entry? Or keep same day? 
-// Usually resetting to now is safer to prevent accidental backdating of next entry.
-const now = new Date();
-setEntryDate(now.toISOString().split('T')[0]);
-setEntryTime(now.toTimeString().slice(0, 5));
-
-setView('dashboard');
+// Confirmed behavior change: Stay on form, keep timestamp
+alert("Data saved successfully!");
 };
 
 const handleInputChange = (id: string, val: string) => {
