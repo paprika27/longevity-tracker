@@ -42,8 +42,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
   }, [entries]);
 
   // Prepare data with proper timestamps for XAxis type="number"
+  // Filter data to only include range where selected metrics have values
   const data = useMemo(() => {
-    return sortedEntries.map(entry => {
+    // 1. Filter entries: Only keep entries where at least one SELECTED metric has a valid value.
+    const relevantEntries = sortedEntries.filter(entry => {
+        if (selectedMetrics.length === 0) return true;
+        
+        return selectedMetrics.some(id => {
+            const val = entry.values[id];
+            return val !== null && val !== undefined;
+        });
+    });
+
+    // 2. Map to chart format
+    return relevantEntries.map(entry => {
         const point: any = {
             dateStr: new Date(entry.timestamp).toLocaleDateString(),
             timestamp: new Date(entry.timestamp).getTime()
@@ -53,7 +65,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
         });
         return point;
     });
-  }, [sortedEntries, metrics]);
+  }, [sortedEntries, metrics, selectedMetrics]);
 
   const toggleMetric = (id: string) => {
     if (selectedMetrics.includes(id)) {
@@ -145,6 +157,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
             {selectedMetrics.length === 0 ? (
                 <div className="absolute inset-0 flex items-center justify-center text-slate-400">
                     <p>Select metrics above to visualize data.</p>
+                </div>
+            ) : data.length === 0 ? (
+                <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                    <p>No data recorded for the selected metrics.</p>
                 </div>
             ) : (
             <ResponsiveContainer width="100%" height="100%">
