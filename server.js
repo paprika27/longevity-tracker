@@ -1,0 +1,106 @@
+
+import express from 'express';
+import cors from 'cors';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Allow config via ENV, default to local folder for dev, /app/data for Docker
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.json');
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// Simple in-memory DB backed by file
+let db = {
+  users: {}, // username -> { password, data }
+};
+
+// Ensure directory exists
+async function ensureDir() {
+  const dir = path.dirname(DB_PATH);
+  try {
+    await fs.access(dir);
+  } catch {
+    await fs.mkdir(dir, { recursive: true });
+  }
+}
+
+// Load DB on start
+async function loadDb() {
+  await ensureDir();
+  try {
+    const data = await fs.readFile(DB_PATH, 'utf-8');
+    db = JSON.parse(data);
+    console.log(`Database loaded from ${DB_PATH}`);
+  } catch (e) {
+    console.log("No existing DB, starting fresh.");
+    await saveDb();
+  }
+}
+
+async function saveDb() {
+  await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2));
+}
+
+await loadDb();
+
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!db.users[username]) {
+    // Auto-register for prototype simplicity
+    db.users[username] = { password, data: null };
+    await saveDb();
+    return res.json({ token: username, message: "Account created" });
+  }
+
+  if (db.users[username].password === password) {
+    return res.json({ token: username });
+  }
+
+  res.status(401).json({ error: "Invalid credentials" });
+});
+
+app.post('/api/sync', async (req, res) => {
+  const token = req.headers.authorization; // Simple username as token for prototype
+  if (!token || !db.users[token]) return res.status(401).json({ error: "Unauthorized" });
+
+  const clientData = req.body; 
+  const serverData = db.users[token].data || { entries: [], metrics: [], categories: [], regimen: "", settings: {} };
+
+  // --- MERGE LOGIC ---
+  const mergedEntriesMap = new Map();
+  serverData.entries?.forEach(e => mergedEntriesMap.set(e.id, e));
+  clientData.entries?.forEach(e => mergedEntriesMap.set(e.id, e)); 
+  const mergedEntries = Array.from(mergedEntriesMap.values());
+
+  const mergedMetrics = clientData.metrics && clientData.metrics.length > 0 ? clientData.metrics : serverData.metrics;
+  const mergedCategories = clientData.categories && clientData.categories.length > 0 ? clientData.categories : serverData.categories;
+  const mergedRegimen = clientData.regimen || serverData.regimen;
+  const mergedSettings = { ...serverData.settings, ...clientData.settings };
+
+  const finalState = {
+    entries: mergedEntries,
+    metrics: mergedMetrics,
+    categories: mergedCategories,
+    regimen: mergedRegimen,
+    settings: mergedSettings
+  };
+
+  db.users[token].data = finalState;
+  await saveDb();
+
+  res.json(finalState);
+});
+
+// Bind to 0.0.0.0 is crucial for Docker networking
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});

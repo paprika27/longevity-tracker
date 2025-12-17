@@ -133,3 +133,29 @@ export const factoryReset = (): void => {
     localStorage.removeItem(CATEGORIES_KEY);
     localStorage.removeItem(SETTINGS_KEY);
 };
+
+// --- SYNC HELPERS ---
+
+export interface FullState {
+  entries: LogEntry[];
+  metrics: MetricConfig[];
+  categories: string[];
+  regimen: string;
+  settings: AppSettings;
+}
+
+export const getFullState = (): FullState => ({
+  entries: getEntries(),
+  metrics: getMetrics(),
+  categories: getCategories(),
+  regimen: getRegimen(),
+  settings: getSettings()
+});
+
+export const restoreFullState = (state: FullState) => {
+  if (state.entries) saveAllEntries(state.entries);
+  if (state.metrics) saveMetrics(state.metrics);
+  if (state.categories) saveCategories(state.categories);
+  if (state.regimen) saveRegimen(state.regimen);
+  if (state.settings) saveSettings(state.settings);
+};

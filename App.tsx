@@ -11,6 +11,7 @@ import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
 import { CoachBanner } from './components/CoachBanner';
+import { AuthWidget } from './components/AuthWidget';
 import { FormattedDateInput, FormattedTimeInput, FormattedDurationInput, formatDuration } from './components/FormattedInputs';
 import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock, RotateCcw } from 'lucide-react';
 import { DEFAULT_SETTINGS } from './constants';
@@ -66,14 +67,7 @@ const App: React.FC = () => {
 
     // Load data on mount
     useEffect(() => {
-        setEntries(db.getEntries());
-        setMetrics(db.getMetrics());
-        const cats = db.getCategories();
-        setCategories(cats);
-        // Default to 'inputs' if available, else first cat
-        if (cats.includes('inputs')) setActiveFormCategory('inputs');
-        else if (cats.length > 0) setActiveFormCategory(cats[0]);
-        setAppSettings(db.getSettings());
+        refreshData();
     }, []);
 
     // Persist feedback preferences
@@ -83,8 +77,15 @@ const App: React.FC = () => {
     const refreshData = () => {
         setEntries(db.getEntries());
         setMetrics(db.getMetrics());
-        setCategories(db.getCategories());
+        const cats = db.getCategories();
+        setCategories(cats);
         setAppSettings(db.getSettings());
+        
+        // Reset active form category if needed
+        if (cats.length > 0 && (!activeFormCategory || !cats.includes(activeFormCategory))) {
+             if (cats.includes('inputs')) setActiveFormCategory('inputs');
+             else setActiveFormCategory(cats[0]);
+        }
     };
 
     const handleMetricsUpdate = (updatedMetrics: MetricConfig[]) => {
@@ -469,17 +470,36 @@ const App: React.FC = () => {
                         <Activity className="w-6 h-6" />
                         <h1 className="font-bold text-xl tracking-tight text-slate-900 hidden sm:block">Longevity<span className="text-indigo-600">Tracker</span></h1>
                     </div>
-                    <nav className="flex gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto">
+                    
+                    <div className="flex items-center gap-4">
+                        <nav className="flex gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto hidden sm:flex">
+                            {['dashboard', 'regimen', 'history', 'entry', 'settings'].map(v => (
+                                <button
+                                    key={v}
+                                    onClick={() => setView(v as any)}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap capitalize ${view === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    {v}
+                                </button>
+                            ))}
+                        </nav>
+                        
+                        <AuthWidget onSyncComplete={refreshData} />
+                    </div>
+                </div>
+                {/* Mobile Nav */}
+                <div className="sm:hidden border-t border-slate-100 px-4 py-2 overflow-x-auto">
+                    <div className="flex gap-2">
                         {['dashboard', 'regimen', 'history', 'entry', 'settings'].map(v => (
                             <button
                                 key={v}
                                 onClick={() => setView(v as any)}
-                                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap capitalize ${view === v ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap capitalize ${view === v ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'text-slate-500 bg-white border border-slate-200'}`}
                             >
                                 {v}
                             </button>
                         ))}
-                    </nav>
+                    </div>
                 </div>
             </header>
 
