@@ -13,7 +13,7 @@ import { MetricManager } from './components/MetricManager';
 import { CoachBanner } from './components/CoachBanner';
 import { AuthWidget } from './components/AuthWidget';
 import { FormattedDateInput, FormattedTimeInput, FormattedDurationInput, formatDuration } from './components/FormattedInputs';
-import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock, RotateCcw } from 'lucide-react';
+import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock, RotateCcw, FileText } from 'lucide-react';
 import { DEFAULT_SETTINGS } from './constants';
 
 // Helper to determine status
@@ -462,17 +462,33 @@ const App: React.FC = () => {
         printWindow.print();
     };
 
+    const NavButton = ({ id, label, icon: Icon }: { id: typeof view, label: string, icon: any }) => (
+        <button
+            onClick={() => setView(id)}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all ${
+                view === id 
+                ? 'text-indigo-600 bg-indigo-50/50' 
+                : 'text-slate-400 hover:text-slate-600'
+            }`}
+        >
+            <Icon className={`w-6 h-6 mb-1 ${view === id ? 'stroke-2' : 'stroke-1.5'}`} />
+            <span className="text-[10px] font-medium">{label}</span>
+        </button>
+    );
+
     return (
-        <div className="min-h-screen pb-12 bg-slate-50">
-            <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div className="min-h-screen pb-24 sm:pb-12 bg-slate-50">
+            {/* Header: Safe Area Aware */}
+            <header className="bg-white border-b border-slate-200 sticky top-0 z-30 safe-pt">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-indigo-600">
                         <Activity className="w-6 h-6" />
-                        <h1 className="font-bold text-xl tracking-tight text-slate-900 hidden sm:block">Longevity<span className="text-indigo-600">Tracker</span></h1>
+                        <h1 className="font-bold text-xl tracking-tight text-slate-900 block">Longevity<span className="text-indigo-600">Tracker</span></h1>
                     </div>
                     
                     <div className="flex items-center gap-4">
-                        <nav className="flex gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto hidden sm:flex">
+                        {/* Desktop Nav */}
+                        <nav className="hidden sm:flex gap-1 bg-slate-100 p-1 rounded-lg">
                             {['dashboard', 'regimen', 'history', 'entry', 'settings'].map(v => (
                                 <button
                                     key={v}
@@ -487,32 +503,18 @@ const App: React.FC = () => {
                         <AuthWidget onSyncComplete={refreshData} />
                     </div>
                 </div>
-                {/* Mobile Nav */}
-                <div className="sm:hidden border-t border-slate-100 px-4 py-2 overflow-x-auto">
-                    <div className="flex gap-2">
-                        {['dashboard', 'regimen', 'history', 'entry', 'settings'].map(v => (
-                            <button
-                                key={v}
-                                onClick={() => setView(v as any)}
-                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap capitalize ${view === v ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'text-slate-500 bg-white border border-slate-200'}`}
-                            >
-                                {v}
-                            </button>
-                        ))}
-                    </div>
-                </div>
             </header>
 
-            <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
                 {view === 'dashboard' && (
-                    <div className="space-y-8">
-                        <div className="flex justify-between items-start">
+                    <div className="space-y-6 sm:space-y-8">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
                                 <p className="text-slate-500 text-sm">Overview of your biological status.</p>
                             </div>
-                            <div className="flex gap-2">
-                                <button onClick={handlePrintReport} className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors shadow-sm">
+                            <div className="flex w-full sm:w-auto gap-2">
+                                <button onClick={handlePrintReport} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors shadow-sm">
                                     <Printer className="w-3 h-3" /> Report
                                 </button>
                                 <DataControls entries={entries} metrics={metrics} onImportComplete={refreshData} />
@@ -535,7 +537,7 @@ const App: React.FC = () => {
                             </div>
                         ) : (
                             <>
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
                                     <div className="lg:col-span-1">
                                         <RadarView metrics={metrics} values={radarValues} />
                                     </div>
@@ -557,7 +559,7 @@ const App: React.FC = () => {
                                                     ))}
                                                  </div>
                                                  <button onClick={handleDismissAllVisible} className="text-xs bg-white border border-slate-200 text-slate-500 hover:text-red-600 px-2 py-1.5 rounded-lg flex items-center gap-1 shadow-sm">
-                                                     <CheckCircle2 className="w-3.5 h-3.5" /> Dismiss
+                                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                                  </button>
                                                  {dismissedFeedback.length > 0 && (
                                                      <button onClick={restoreFeedback} className="text-xs text-slate-400 hover:text-indigo-600 px-2"><Eye className="w-3 h-3" /></button>
@@ -567,7 +569,7 @@ const App: React.FC = () => {
                                         <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                                             {displayedFeedback.map(item => (
                                                 <div key={item.metricId} className={`relative p-4 rounded-lg border-l-4 group transition-all ${item.status === StatusLevel.GOOD ? 'border-green-500 bg-green-50' : item.status === StatusLevel.FAIR ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50'}`}>
-                                                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                     <div className="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                                         <button onClick={() => toggleFeedbackPin(item.metricId)} className={`p-1 rounded hover:bg-black/5 ${pinnedFeedback.includes(item.metricId) ? 'text-slate-800' : 'text-slate-400'}`}>
                                                             <Pin className={`w-3.5 h-3.5 ${pinnedFeedback.includes(item.metricId) ? 'fill-current' : ''}`} />
                                                         </button>
@@ -598,13 +600,13 @@ const App: React.FC = () => {
                                             
                                             <div className="flex gap-2 flex-wrap">
                                                 {/* Category Filter */}
-                                                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[100px]">
+                                                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[100px]">
                                                     <option value="all">All Cats</option>
                                                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
 
                                                 {/* Status Filter - Restored/Ensured */}
-                                                <select value={metricFilter} onChange={(e) => setMetricFilter(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
+                                                <select value={metricFilter} onChange={(e) => setMetricFilter(e.target.value as any)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="all">All Status</option>
                                                     <option value="good">Good (Green)</option>
                                                     <option value="fair">Fair (Yellow)</option>
@@ -613,7 +615,7 @@ const App: React.FC = () => {
                                                 </select>
 
                                                 {/* Sorting Dropdown - Updated Recently / Streak Added */}
-                                                <select value={metricSort} onChange={(e) => setMetricSort(e.target.value as any)} className="pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
+                                                <select value={metricSort} onChange={(e) => setMetricSort(e.target.value as any)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="default">Default</option>
                                                     <option value="name">Name</option>
                                                     <option value="status">Status</option>
@@ -624,7 +626,7 @@ const App: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                         {gridMetrics.map(m => (
                                             <MetricCard
                                                 key={m.id}
@@ -649,9 +651,9 @@ const App: React.FC = () => {
                      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="bg-slate-50 border-b border-slate-200 px-6 py-4">
                             <h2 className="text-xl font-bold text-slate-900">Log Metrics</h2>
-                            <div className="flex space-x-1 sm:space-x-4 mt-4 overflow-x-auto">
+                            <div className="flex space-x-1 sm:space-x-4 mt-4 overflow-x-auto no-scrollbar">
                                 {categories.map(cat => (
-                                    <button key={cat} onClick={() => setActiveFormCategory(cat)} className={`text-sm font-medium px-3 py-2 border-b-2 capitalize ${activeFormCategory === cat ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>{cat}</button>
+                                    <button key={cat} onClick={() => setActiveFormCategory(cat)} className={`text-sm font-medium px-3 py-2 border-b-2 capitalize whitespace-nowrap ${activeFormCategory === cat ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>{cat}</button>
                                 ))}
                             </div>
                         </div>
@@ -696,6 +698,17 @@ const App: React.FC = () => {
                      </div>
                 )}
             </main>
+
+            {/* Mobile Fixed Bottom Nav */}
+            <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] z-50">
+                <div className="grid grid-cols-5 h-16 safe-pb">
+                    <NavButton id="dashboard" label="Home" icon={LayoutDashboard} />
+                    <NavButton id="entry" label="Log" icon={PlusCircle} />
+                    <NavButton id="history" label="Trends" icon={History} />
+                    <NavButton id="regimen" label="Protocol" icon={FileText} />
+                    <NavButton id="settings" label="Settings" icon={Settings} />
+                </div>
+            </nav>
         </div>
     );
 };

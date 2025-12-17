@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal } from 'lucide-react';
+import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal, Wifi } from 'lucide-react';
 import * as authService from '../services/authService';
 
 interface AuthWidgetProps {
@@ -9,7 +9,7 @@ interface AuthWidgetProps {
 
 export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     const [user, setUser] = useState<string | null>(localStorage.getItem('lt_user'));
-    const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem('lt_server_url') || 'http://localhost:3001');
+    const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem('lt_server_url') || 'http://localhost:3000');
     
     const [isOpen, setIsOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -40,6 +40,7 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     };
 
     const isLocalhost = serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1');
+    const isHttp = serverUrl.startsWith('http://');
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -48,6 +49,16 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
         setLogs([]); // Clear logs on new attempt
         
         addLog(`Initiating Login to: ${serverUrl}`);
+        
+        // Android Warning Checks
+        if (isNative) {
+            if (isLocalhost) {
+                addLog('WARN: Using localhost on Android device (this refers to phone, not PC).');
+            }
+            if (isHttp) {
+                addLog('WARN: Using HTTP. Android requires Cleartext Traffic to be enabled in manifest.');
+            }
+        }
         
         try {
             localStorage.setItem('lt_server_url', serverUrl);
@@ -67,9 +78,15 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
             const msg = err.message || 'Unknown Error';
             addLog(`ERROR: ${msg}`);
             if (msg.includes('Failed to fetch')) {
-                 addLog(`HINT: Failed to fetch usually means the server is unreachable. Check IP and Port.`);
+                 addLog(`HINT: 'Failed to fetch' usually means Network Error.`);
+                 if (isNative && isLocalhost) {
+                     addLog(`FIX: Change 'localhost' to your PC's IP (e.g. 192.168.1.5).`);
+                 }
+                 if (isNative && isHttp) {
+                     addLog(`FIX: Ensure 'usesCleartextTraffic' is true in AndroidManifest.`);
+                 }
             }
-            setError('Connection failed. See Logs.');
+            setError('Connection failed. Check Logs.');
             setShowLogs(true); // Auto open logs on error
         } finally {
             setLoading(false);
@@ -126,19 +143,31 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
                                     <Server className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
                                     <input 
                                         type="text" 
-                                        className={`w-full text-sm border-slate-300 rounded-md pl-8 ${isNative && isLocalhost ? 'border-orange-300 bg-orange-50' : ''}`}
-                                        placeholder="http://192.168.1.X:3001"
+                                        className={`w-full text-sm border-slate-300 rounded-md pl-8 ${isNative && (isLocalhost || isHttp) ? 'border-orange-300 bg-orange-50' : ''}`}
+                                        placeholder="http://192.168.1.X:3000"
                                         value={serverUrl} onChange={e => setServerUrl(e.target.value)}
                                         required
                                     />
                                 </div>
-                                {isNative && isLocalhost && (
-                                    <div className="flex gap-2 mt-1.5 p-2 bg-orange-50 border border-orange-100 rounded text-[10px] text-orange-800 leading-tight">
-                                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                                        <p>
-                                            <strong>Android Warning:</strong> 'localhost' refers to the phone itself, not your PC. 
-                                            Use your PC's local IP (e.g. 192.168.1.50).
-                                        </p>
+                                
+                                {isNative && (
+                                    <div className="mt-2 space-y-1">
+                                        {isLocalhost && (
+                                            <div className="flex gap-2 p-1.5 bg-orange-50 border border-orange-100 rounded text-[10px] text-orange-800 leading-tight">
+                                                <Wifi className="w-3 h-3 shrink-0 mt-0.5" />
+                                                <p>
+                                                    <strong>Don't use localhost.</strong> Use your PC's IP (e.g. 192.168.1.5).
+                                                </p>
+                                            </div>
+                                        )}
+                                        {isHttp && (
+                                            <div className="flex gap-2 p-1.5 bg-red-50 border border-red-100 rounded text-[10px] text-red-800 leading-tight">
+                                                <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                                                <p>
+                                                    <strong>HTTP Blocked?</strong> Android blocks 'http://' by default. You may need to enable "Cleartext Traffic" in your app config or use HTTPS.
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

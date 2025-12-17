@@ -74,26 +74,27 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
 
                 // 1. Write to binary string
                 const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
-                
                 const fileName = `LongevityTracker_Data_${new Date().getTime()}.xlsx`;
 
-                // 2. Save to Cache Directory (Temporary)
+                // 2. Save to Cache Directory (Best for sharing without extra permissions)
                 const result = await Filesystem.writeFile({
                     path: fileName,
                     data: wbout,
                     directory: Directory.Cache, 
                 });
+                
+                console.log('File written to:', result.uri);
 
-                // 3. Share the file URI
+                // 3. Share the file using the 'files' array (CRITICAL for Android)
                 await Share.share({
                     title: 'Export Longevity Data',
                     text: 'Here is your exported data file.',
-                    url: result.uri,
-                    dialogTitle: 'Save or Share Data'
+                    files: [result.uri], // Use 'files' instead of 'url' for local files
+                    dialogTitle: 'Save Data'
                 });
-            } catch (fsError) {
+            } catch (fsError: any) {
                 console.error("Native export error:", fsError);
-                alert("Could not export native file. Ensure Capacitor plugins are installed.");
+                alert(`Native Export Failed: ${fsError.message || JSON.stringify(fsError)}`);
             }
 
         } else {
@@ -101,9 +102,9 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
             XLSX.writeFile(workbook, "LongevityTracker_Data.xlsx");
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Export failed:", error);
-        alert("Failed to export data. Check console for details.");
+        alert(`Export Failed: ${error.message}`);
     } finally {
         setLoading(false);
     }
@@ -336,10 +337,10 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
                 });
                 await Share.share({
                     title: 'Export Config',
-                    url: result.uri,
+                    files: [result.uri],
                 });
-            } catch (e) {
-                alert("Native export failed");
+            } catch (e: any) {
+                alert(`Native Export Failed: ${e.message}`);
             }
       } else {
           const blob = new Blob([dataStr], { type: "application/json" });
