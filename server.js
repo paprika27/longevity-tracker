@@ -17,6 +17,13 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.json');
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Request Logger: Helps debug if the phone is actually reaching the laptop
+app.use((req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress;
+    console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url} from ${ip}`);
+    next();
+});
+
 // Simple in-memory DB backed by file
 let db = {
   users: {}, // username -> { password, data }
@@ -53,15 +60,18 @@ await loadDb();
 
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
+  console.log(`Login attempt: ${username}`);
   
   if (!db.users[username]) {
     // Auto-register for prototype simplicity
     db.users[username] = { password, data: null };
     await saveDb();
+    console.log(`New user created: ${username}`);
     return res.json({ token: username, message: "Account created" });
   }
 
   if (db.users[username].password === password) {
+    console.log(`User authenticated: ${username}`);
     return res.json({ token: username });
   }
 
@@ -73,6 +83,8 @@ app.post('/api/sync', async (req, res) => {
   if (!token || !db.users[token]) return res.status(401).json({ error: "Unauthorized" });
 
   const clientData = req.body; 
+  console.log(`Syncing data for ${token} (${clientData.entries?.length || 0} entries)`);
+
   const serverData = db.users[token].data || { entries: [], metrics: [], categories: [], regimen: "", settings: {} };
 
   // --- MERGE LOGIC ---
@@ -103,4 +115,5 @@ app.post('/api/sync', async (req, res) => {
 // Bind to 0.0.0.0 is crucial for Docker networking
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Ensure your phone is on the same WiFi and firewall allows port ${PORT}`);
 });

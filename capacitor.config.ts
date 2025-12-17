@@ -5,7 +5,10 @@ const config: CapacitorConfig = {
   appName: 'LongevityTracker',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    // Allow both HTTP and HTTPS for local development
+    androidScheme: 'http',
+    // You can also use 'https' for production
+    // androidScheme: 'https'
   }
 };
 

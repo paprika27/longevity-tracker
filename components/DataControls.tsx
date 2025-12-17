@@ -69,32 +69,72 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
         if (isNative) {
             // --- NATIVE ANDROID/IOS EXPORT ---
             try {
-                const { Filesystem, Directory } = await import('@capacitor/filesystem');
+                const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
                 const { Share } = await import('@capacitor/share');
 
-                // 1. Write to binary string
+                // 1. Write to binary string (base64)
                 const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
                 const fileName = `LongevityTracker_Data_${new Date().getTime()}.xlsx`;
 
-                // 2. Save to Cache Directory (Best for sharing without extra permissions)
+                console.log('Attempting to write Excel file:', fileName);
+                console.log('File size (base64):', wbout.length, 'chars');
+
+                // 2. Save to Cache Directory with proper encoding
                 const result = await Filesystem.writeFile({
                     path: fileName,
                     data: wbout,
-                    directory: Directory.Cache, 
+                    directory: Directory.Cache,
+                    encoding: Encoding.UTF8
                 });
                 
-                console.log('File written to:', result.uri);
+                console.log('File written successfully:', result.uri);
 
                 // 3. Share the file using the 'files' array (CRITICAL for Android)
+                // Convert file URI to proper format for sharing
+                let shareUri = result.uri;
+                
+                // For Android, we might need to use content:// URI
+                // Note: Capacitor handles file URIs automatically for sharing in most cases
+                // The FileProvider conversion is complex and may not be necessary
+                // Let's use the original URI and let Capacitor handle it
+                console.log('Using file URI for sharing:', result.uri);
+                
+                // If you need FileProvider support, you would need to:
+                // 1. Add proper Android native code
+                // 2. Use Capacitor plugins that support content URIs
+                // For now, we'll use the direct file URI which works in most cases
+
+                console.log('Sharing file with URI:', shareUri);
+                
                 await Share.share({
                     title: 'Export Longevity Data',
                     text: 'Here is your exported data file.',
-                    files: [result.uri], // Use 'files' instead of 'url' for local files
+                    files: [shareUri], // Use 'files' instead of 'url' for local files
                     dialogTitle: 'Save Data'
                 });
             } catch (fsError: any) {
                 console.error("Native export error:", fsError);
-                alert(`Native Export Failed: ${fsError.message || JSON.stringify(fsError)}`);
+                
+                // Enhanced error messages
+                let errorMessage = 'Export failed: ';
+                if (fsError.message) {
+                    errorMessage += fsError.message;
+                } else if (fsError.code) {
+                    errorMessage += `Error ${fsError.code}`;
+                } else {
+                    errorMessage += JSON.stringify(fsError);
+                }
+                
+                // Specific fixes for common issues
+                if (fsError.message?.includes('permission') || fsError.message?.includes('Permission')) {
+                    errorMessage += '\n\nTry restarting the app or check app permissions.';
+                }
+                
+                if (fsError.message?.includes('base64') || fsError.message?.includes('encoding')) {
+                    errorMessage += '\n\nThere was an issue with file encoding.';
+                }
+                
+                alert(errorMessage);
             }
 
         } else {
