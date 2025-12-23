@@ -1,72 +1,101 @@
-# Longevity Tracker
 
-A privacy-focused, evidence-based application designed to track, visualize, and optimize key longevity metrics. It treats the human body as a biological system, applying engineering principles to health optimization using local storage for complete data privacy.
+# 🔬 Longevity Tracker
 
-## Features
+A privacy-focused, evidence-based biological dashboard. This application treats the human body as a complex system, applying engineering principles to health optimization.
 
-### 📊 Dashboard
-*   **Holistic Balance Radar:** Visualize your health across multiple dimensions (Sleep, Cardio, Strength, etc.) in a spider chart.
-*   **Smart Analysis:** Real-time feedback based on scientific ranges (Good/Fair/Poor).
-*   **Evidence-Based:** Every metric includes citations and optimal ranges based on longevity research.
-*   **Interactive Metrics:** Sort, filter, and click metrics to dive into historical trends.
-*   **Alert Management:** Pin important notices or mass-dismiss notifications.
+## 🌟 Key Features
 
-### 📈 Trends & History
-*   **Visual History:** Interactive line charts to track progress over time.
-*   **Multi-Metric Comparison:** Overlay multiple metrics to find correlations.
-*   **Category Filters:** Quickly toggle between Daily, Weekly, or Clinical metrics.
-*   **Interactive Zoom:** Drag to zoom in on specific timeframes.
+*   **Holistic Balance Radar:** Visualization of performance vs. clinical markers.
+*   **Automatic VO2max Estimations:** Field-test math for rowing, running, and resting vitals.
+*   **Protocol-First Regimen:** A built-in Markdown editor for your longevity schedule.
+*   **Psychosocial Metrics:** Tracking social connection density (3-5 interactions/week goal).
+*   **Privacy First:** Local-first storage with optional self-hosted sync.
 
-### 📝 Regimen Manager
-*   **Markdown Support:** Write and format your health protocols using Markdown.
-*   **Table Rendering:** Native support for complex regimen tables and schedules.
-*   **Customizable:** Fully editable text area to adapt the protocol to your needs.
+---
 
-### ⚙️ Customization & Data
-*   **Form Designer:** Group metrics into custom categories (e.g., "Morning Routine").
-*   **Calculated Metrics:** Create derived metrics (like BMI or Custom Scores) using JavaScript formulas.
-*   **Data Portability:**
-    *   **Export/Import Data:** Full Excel (`.xlsx`) support for your logs.
-    *   **Config Backup:** Export your custom metrics and settings as JSON.
-*   **Privacy First:** All data is stored in your browser's `localStorage`. No accounts, no tracking.
+## 🧬 Science & Mathematics
 
-## Tech Stack
+The app uses several validated physiological models to calculate your performance metrics:
 
-*   **Frontend:** React 18
-*   **Styling:** Tailwind CSS (via CDN)
-*   **Icons:** Lucide React
-*   **Charts:** Recharts
-*   **Data Handling:** XLSX (SheetJS)
-*   **Storage:** LocalStorage API
-*   **Architecture:** ES Modules via `importmap` (Client-side only, no bundler required).
+### 1. VO2max (RHR-based)
+Utilizes the **Uth-Sørensen-Overgaard-Pedersen** formula.
+> **Formula:** `15.3 * (Max HR / Resting HR)`
+> *Where Max HR is estimated as `220 - Age`.*
+> *Source: Uth et al. (2004)*
 
-## Setup & Usage
+### 2. VO2max (5K Run)
+Uses a second-order polynomial regression based on the **Daniels-Gilbert (VDOT)** "Oxygen Power" curves.
+> **Formula:** `-4.6 + (0.1822 * Velocity) + (0.000104 * Velocity²)`
+> *Where Velocity is m/min over a 5K distance.*
 
-Since this application uses native ES modules and CDN imports, it requires no build process (like Webpack or Vite) but **must** be served via a local web server to handle module loading correctly (opening `index.html` directly as a file will likely fail due to CORS policies on modules).
+### 3. VO2max (2K Row)
+Derived from the **Concept2 Power-to-VO2** correlation.
+> **Logic:** Converts split-time to Watts, then calculates VO2 based on the constant `14.4 mL/min/W` plus a baseline.
+
+---
+
+## 💻 Local Development
 
 ### Prerequisites
-*   A modern web browser (Chrome, Edge, Firefox, Safari).
-*   A method to serve static files.
+*   Node.js (v18+)
+*   NPM
 
-### Instructions
+### Setup
+1.  Install dependencies:
+    ```bash
+    npm install
+    ```
+2.  Start the development server:
+    ```bash
+    npm run dev
+    ```
+    The app will be available at `http://localhost:5173`.
 
-1.  **Download** the source files into a folder.
-2.  **Start a Local Server** in that folder.
-    *   **Python:** `python3 -m http.server 8000`
-    *   **Node:** `npx serve .`
-    *   **VS Code:** Right-click `index.html` -> "Open with Live Server".
-3.  **Open Browser:** Navigate to `http://localhost:8000` (or the port provided by your server).
+---
 
-## Customization Guide
+## ☁️ Optional Sync Server
 
-### Adding a New Metric
-1.  Go to **Settings**.
-2.  Click **Create New Metric**.
-3.  Define the ID, Name, Range (Min/Max), and Unit.
-4.  Assign it to a form category.
+To synchronize data between your PC and a mobile device without using third-party clouds, use the included `server.js`.
 
-### Creating a Calculated Metric
-1.  In **Settings**, create a new metric.
-2.  Check **Calculated Automatically**.
-3.  Enter a JavaScript formula using other metric IDs as variables.
-    *   *Example (BMI):* `weight / ((height/100) * (height/100))`
+### Setup
+1.  Run the server on your computer:
+    ```bash
+    node server.js
+    ```
+2.  **Firewall:** Ensure port `3000` is open on your PC.
+3.  **App Config:** In the app, go to the Cloud icon and enter your PC's IP address (e.g., `http://192.168.1.5:3000`).
+
+---
+
+## 📱 Android Deployment (Capacitor)
+
+The app is built to be a native Android application using Capacitor.
+
+### Build Instructions
+1.  Compile the web code:
+    ```bash
+    npm run build
+    ```
+2.  Sync with Android:
+    ```bash
+    npx cap sync
+    ```
+3.  Open in Android Studio:
+    ```bash
+    npx cap open android
+    ```
+
+### Android Network Configuration
+If testing against a local `http://` server, you must allow cleartext traffic:
+1.  Open `android/app/src/main/AndroidManifest.xml`.
+2.  Ensure the `<application>` tag includes:
+    ```xml
+    android:usesCleartextTraffic="true"
+    ```
+3.  Ensure capacitor config permits http
+---
+
+## 📂 Data & Export
+*   **Local Storage:** All logs are stored in the browser's `localStorage` indexed by your device.
+*   **Excel Export:** Download a complete time-series of your health data in `.xlsx` format.
+*   **Config Backup:** Export your custom metric definitions and categories as a `.json` file.

@@ -85,7 +85,14 @@ app.post('/api/sync', async (req, res) => {
   const clientData = req.body; 
   console.log(`Syncing data for ${token} (${clientData.entries?.length || 0} entries)`);
 
-  const serverData = db.users[token].data || { entries: [], metrics: [], categories: [], regimen: "", settings: {} };
+  // Default state structure
+  const serverData = db.users[token].data || { 
+    entries: [], 
+    metrics: [], 
+    categories: [], 
+    regimen: "", 
+    settings: { dateFormat: 'YYYY-MM-DD', timeFormat: '24h' } 
+  };
 
   // --- MERGE LOGIC ---
   const mergedEntriesMap = new Map();
@@ -96,6 +103,8 @@ app.post('/api/sync', async (req, res) => {
   const mergedMetrics = clientData.metrics && clientData.metrics.length > 0 ? clientData.metrics : serverData.metrics;
   const mergedCategories = clientData.categories && clientData.categories.length > 0 ? clientData.categories : serverData.categories;
   const mergedRegimen = clientData.regimen || serverData.regimen;
+  
+  // Shallow merge settings, preferring client's most recent choice
   const mergedSettings = { ...serverData.settings, ...clientData.settings };
 
   const finalState = {
@@ -115,5 +124,5 @@ app.post('/api/sync', async (req, res) => {
 // Bind to 0.0.0.0 is crucial for Docker networking
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Ensure your phone is on the same WiFi and firewall allows port ${PORT}`);
+  console.log(`Local Access: http://localhost:${PORT}`);
 });
