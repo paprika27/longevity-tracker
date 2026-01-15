@@ -1,17 +1,16 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { MetricValues, LogEntry, StatusLevel, FeedbackItem, MetricConfig, AppSettings, MetricStatusData } from './types';
 import * as db from './services/storageService';
 import * as calculators from './services/riskCalculators';
 import * as formulaLib from './services/formulaLib';
 import { MetricCard } from './components/MetricCard';
-import { RadarView } from './components/RadarView';
 import { HistoryView } from './components/HistoryView';
 import { RegimenView } from './components/RegimenView';
 import { DataControls } from './components/DataControls';
 import { MetricManager } from './components/MetricManager';
 import { CoachBanner } from './components/CoachBanner';
 import { AuthWidget } from './components/AuthWidget';
+import { BiologicalAgeView } from './components/BiologicalAgeView';
 import { FormattedDateInput, FormattedTimeInput, FormattedDurationInput, formatDuration } from './components/FormattedInputs';
 import { Activity, PlusCircle, LayoutDashboard, History, Save, Quote, ClipboardList, Settings, Edit3, Pin, X, Eye, Filter, ArrowUpDown, Trash2, CheckCircle2, Printer, Search, Calendar, Clock, RotateCcw, FileText } from 'lucide-react';
 import { DEFAULT_SETTINGS } from './constants';
@@ -149,8 +148,18 @@ const App: React.FC = () => {
 
     // --- DERIVED STATE ---
 
-    const processedEntries = useMemo(() => {
-        const calculatedMetrics = metrics.filter(m => m.isCalculated && m.formula);
+    const processedEntries = useMemo((): LogEntry[] => {
+        // Ensure complex formulas (like age calculators that depend on VO2max) run last by sorting
+        // calculated metrics. If a formula contains another calculated metric ID, it should run later.
+        // A simple heuristic here is to run standard calculations first, then Age calculations.
+        const calculatedMetrics = metrics.filter(m => m.isCalculated && m.formula).sort((a, b) => {
+             const aIsAge = a.id.includes('age');
+             const bIsAge = b.id.includes('age');
+             if (aIsAge && !bIsAge) return 1;
+             if (!aIsAge && bIsAge) return -1;
+             return 0;
+        });
+
         const sortedEntries = [...entries].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         const runningValues: MetricValues = {};
 
@@ -159,7 +168,7 @@ const App: React.FC = () => {
                 if (val !== null && val !== undefined) runningValues[key] = val;
             });
             const context = { ...runningValues };
-            const newValues = { ...entry.values };
+            const newValues: MetricValues = { ...entry.values };
 
             const lib = {
                 ...calculators,
@@ -170,7 +179,7 @@ const App: React.FC = () => {
                 if (!m.formula) return;
                 try {
                     const func = new Function('vals', 'lib', `with(vals) { try { return ${m.formula}; } catch(e) { return null; } }`);
-                    const result = func(context, lib);
+                    const result = func(context, lib) as any;
                     if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
                         const finalVal = parseFloat(result.toFixed(2));
                         newValues[m.id] = finalVal;
@@ -538,8 +547,11 @@ const App: React.FC = () => {
                         ) : (
                             <>
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-                                    <div className="lg:col-span-1">
-                                        <RadarView metrics={metrics} values={radarValues} />
+                                    <div className="lg:col-span-1 space-y-6">
+                                         {/* Unified Biometrics Panel (Includes Radar & Ages) */}
+                                        <div>
+                                            <BiologicalAgeView values={radarValues} metrics={metrics} onNavigateToEntry={() => setView('entry')} />
+                                        </div>
                                     </div>
                                     <div className="lg:col-span-2 space-y-4">
                                         <div className="flex flex-wrap justify-between items-center gap-3">
@@ -595,18 +607,18 @@ const App: React.FC = () => {
                                         <div className="w-full lg:w-auto flex flex-col sm:flex-row gap-2 flex-wrap">
                                             <div className="relative flex-1 min-w-[140px]">
                                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                                                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border-slate-200 focus:border-indigo-500 bg-white shadow-sm" />
+                                                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border-slate-200 focus:border-indigo-500 bg-white shadow-sm" />
                                             </div>
                                             
                                             <div className="flex gap-2 flex-wrap">
                                                 {/* Category Filter */}
-                                                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[100px]">
+                                                <select value={categoryFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategoryFilter(e.target.value)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[100px]">
                                                     <option value="all">All Cats</option>
                                                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
 
                                                 {/* Status Filter - Restored/Ensured */}
-                                                <select value={metricFilter} onChange={(e) => setMetricFilter(e.target.value as any)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
+                                                <select value={metricFilter} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMetricFilter(e.target.value as any)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="all">All Status</option>
                                                     <option value="good">Good (Green)</option>
                                                     <option value="fair">Fair (Yellow)</option>
@@ -615,7 +627,7 @@ const App: React.FC = () => {
                                                 </select>
 
                                                 {/* Sorting Dropdown - Updated Recently / Streak Added */}
-                                                <select value={metricSort} onChange={(e) => setMetricSort(e.target.value as any)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
+                                                <select value={metricSort} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMetricSort(e.target.value as any)} className="flex-1 sm:flex-none pl-2 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg bg-white shadow-sm cursor-pointer min-w-[110px]">
                                                     <option value="default">Default</option>
                                                     <option value="name">Name</option>
                                                     <option value="status">Status</option>

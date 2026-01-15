@@ -1,4 +1,5 @@
 
+
 import { MetricConfig, AppSettings } from './types';
 
 export const DEFAULT_REGIMEN = `## 🔬 The Integrated Longevity Operating System (LOS)
@@ -195,18 +196,6 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "isTimeBased": true
     },
     {
-        "id": "ring_training_daily",
-        "name": "Ring Session",
-        "range": [0, 1],
-        "unit": "session",
-        "fact": "Log 1 if you completed a ring training session today.",
-        "citation": "Regimen",
-        "step": 1,
-        "category": "daily",
-        "active": true,
-        "includeInSpider": false
-    },
-    {
         "id": "social_daily",
         "name": "Social Connect",
         "range": [0, 1],
@@ -247,23 +236,6 @@ export const DEFAULT_METRICS: MetricConfig[] = [
         "includeInSpider": true,
         "isCalculated": true,
         "formula": "lib.sum('running_duration', 'week')"
-    },
-    {
-      "id": "ring_training_weekly",
-      "name": "Ring Training",
-      "range": [
-        2,
-        3
-      ],
-      "unit": "sessions/week",
-      "fact": "2-3 resistance sessions/week reduces mortality by 23%.",
-      "citation": "Momma et al. 2022",
-      "step": 1,
-      "category": "weekly",
-      "active": true,
-      "includeInSpider": true,
-      "isCalculated": true,
-      "formula": "lib.sum('ring_training_daily', 'week')"
     },
     {
       "id": "social_weekly",
@@ -362,6 +334,20 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "includeInSpider": false
     },
     {
+      "id": "map",
+      "name": "Mean Arterial Pressure",
+      "range": [70, 100],
+      "unit": "mmHg",
+      "fact": "The average pressure in arteries during one cardiac cycle. Better indicator of perfusion to vital organs than simple BP.",
+      "citation": "American Heart Association",
+      "step": 0.1,
+      "category": "clinical",
+      "active": true,
+      "includeInSpider": false,
+      "isCalculated": true,
+      "formula": "(bp_systolic + 2 * bp_diastolic) / 3"
+    },
+    {
       "id": "ldl",
       "name": "LDL Cholesterol",
       "range": [
@@ -392,6 +378,18 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "includeInSpider": false
     },
     {
+      "id": "total_cholesterol",
+      "name": "Total Cholesterol",
+      "range": [150, 200],
+      "unit": "mg/dL",
+      "fact": "Total cholesterol < 200 mg/dL is desirable. Used in KDM Biological Age.",
+      "citation": "AHA",
+      "step": 1,
+      "category": "Lipids",
+      "active": true,
+      "includeInSpider": false
+    },
+    {
       "id": "glucose",
       "name": "Fasting Glucose",
       "range": [
@@ -407,7 +405,7 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "includeInSpider": false
     },
     {
-      "id": "triglycerides",
+      "id": "Triglycerides",
       "name": "Triglycerides",
       "range": [
         0,
@@ -420,6 +418,20 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "category": "Lipids",
       "active": true,
       "includeInSpider": false
+    },
+    {
+      "id": "trig_hdl_ratio",
+      "name": "Trig/HDL Ratio",
+      "range": [0, 2],
+      "unit": "ratio",
+      "fact": "A strong predictor of insulin resistance and the presence of small, dense LDL particles. Target < 2.0.",
+      "citation": "Gaziano et al. 1997",
+      "step": 0.01,
+      "category": "Lipids",
+      "active": true,
+      "includeInSpider": false,
+      "isCalculated": true,
+      "formula": "Triglycerides / hdl"
     },
     {
       "id": "waist",
@@ -483,7 +495,7 @@ export const DEFAULT_METRICS: MetricConfig[] = [
     },
     {
       "id": "age",
-      "name": "Age",
+      "name": "Chronological Age",
       "range": [
         20,
         100
@@ -526,7 +538,7 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "active": true,
       "includeInSpider": false,
       "isCalculated": true,
-      "formula": "lib.calculateCVDRisk(vals)"
+      "formula": "lib.calculateCVDRisk({ age: vals.age, sex: vals.sex, tc: vals.total_cholesterol, hdl: vals.hdl, sbp: vals.bp_systolic, smoker: vals.smoking, diabetes: vals.diabetes, treatment: vals.bp_meds })"
     },
     {
       "id": "whtr",
@@ -560,7 +572,7 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "active": true,
       "includeInSpider": false,
       "isCalculated": true,
-      "formula": "Math.log((triglycerides * glucose) / 2)"
+      "formula": "Math.log((Triglycerides * glucose) / 2)"
     },
     {
       "id": "5k_run_time",
@@ -631,6 +643,90 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "isTimeBased": false
     },
     {
+      "id": "hr_reserve",
+      "name": "Heart Rate Reserve",
+      "range": [100, 150],
+      "unit": "bpm",
+      "fact": "The difference between your max heart rate and resting heart rate. Indicates cardiovascular potential and autonomic health.",
+      "citation": "Karvonen Method 1957",
+      "step": 1,
+      "category": "performance",
+      "active": true,
+      "includeInSpider": false,
+      "isCalculated": true,
+      "formula": "(220 - age) - rhr"
+    },
+    {
+      "id": "vo2max_rhr",
+      "name": "VO2max (RHR-based)",
+      "range": [40, 60],
+      "unit": "ml/kg/min",
+      "fact": "Estimated using the Uth-Sørensen-Overgaard-Pedersen formula. Higher max-to-rest heart rate ratio correlates with higher aerobic capacity.",
+      "citation": "Uth et al. 2004",
+      "step": 0.1,
+      "category": "performance",
+      "active": true,
+      "includeInSpider": false,
+      "isCalculated": true,
+      "formula": "15.3 * ((220 - age) / rhr)"
+    },
+    {
+      "id": "vo2max_row",
+      "name": "VO2max (2K Row)",
+      "range": [40, 60],
+      "unit": "ml/kg/min",
+      "fact": "Estimated from 2K rowing performance using Concept2's power-to-VO2 equations. Reflects high-intensity work capacity.",
+      "citation": "Concept2 / McArdle et al.",
+      "step": 0.1,
+      "category": "performance",
+      "active": true,
+      "includeInSpider": false,
+      "isCalculated": true,
+      "formula": "((2.8 / Math.pow(vals['2k_row_time'] * 0.03, 3)) * 14.4 + 300) / weight"
+    },
+    {
+      "id": "vo2max_run",
+      "name": "VO2max (5K Run)",
+      "range": [40, 60],
+      "unit": "ml/kg/min",
+      "fact": "Estimated from 5K race pace using the Daniels-Gilbert (VDOT) formula. Considered a gold standard for field-test estimation.",
+      "citation": "Daniels & Gilbert 1979",
+      "step": 0.1,
+      "category": "performance",
+      "active": true,
+      "includeInSpider": true,
+      "isCalculated": true,
+      "formula": "-4.6 + (0.1822 * (5000 / vals['5k_run_time'])) + (0.000104 * Math.pow(5000 / vals['5k_run_time'], 2))"
+    },
+    {
+      "id": "kdm_bio_age",
+      "name": "KDM Biological Age",
+      "range": [20, 90],
+      "unit": "years",
+      "fact": "Biological age estimated using the Klemera-Doubal Method (KDM) with clinical biomarkers. Considered a gold standard.",
+      "citation": "Klemera & Doubal 2006",
+      "step": 0.1,
+      "category": "performance",
+      "active": true,
+      "includeInSpider": true,
+      "isCalculated": true,
+      "formula": "lib.calculateKDMBioAge({ age: vals.age, sex: vals.sex, albumin: vals.Albumin, creatinine: vals.Kreatinin, total_cholesterol: vals.total_cholesterol, glucose: vals.glucose, crp: vals.CRP, alp: vals['Alkalische Phosphatase (AP)'], sbp: vals.bp_systolic, bmi: vals.bmi, total_protein: vals['Total Protein'] })?.biologicalAge"
+    },
+    {
+      "id": "pheno_age",
+      "name": "PhenoAge",
+      "range": [20, 90],
+      "unit": "years",
+      "fact": "Biological age estimated from 9 clinical blood markers.",
+      "citation": "Levine et al. 2018",
+      "step": 0.1,
+      "category": "clinical",
+      "active": true,
+      "includeInSpider": false,
+      "isCalculated": true,
+      "formula": "lib.calculatePhenoAge({ age: vals.age, albumin: vals.Albumin, creatinine: vals.Kreatinin, glucose: vals.glucose, crp: vals.CRP, lymphocyte_pct: vals.lymphocyte_pct, lymphocyte_abs: vals.Lymphozyten, mcv: vals.MCV, rdw: vals.RDW, alp: vals['Alkalische Phosphatase (AP)'], wbc: vals.Leukozyten, total_protein: vals['Total Protein'] })?.biologicalAge"
+    },
+    {
       "id": "neck_circ",
       "name": "Neck Circumference",
       "range": [
@@ -674,5 +770,121 @@ export const DEFAULT_METRICS: MetricConfig[] = [
       "category": "shape",
       "active": true,
       "includeInSpider": false
+    },
+    
+    // --- PHENOAGE MARKERS (Inactive by default) ---
+    {
+      "id": "Albumin",
+      "name": "Albumin",
+      "range": [
+        55.8,
+        66.1
+      ],
+      "unit": "%",
+      "fact": "Serum albumin 40-50 g/L indicates adequate protein status and liver function. If % is used, it will be converted using Total Protein.",
+      "citation": "Arnaud et al. 2010; Clinical Chemistry",
+      "step": 0.1,
+      "category": "metabolic",
+      "active": true,
+      "includeInSpider": false
+    },
+    {
+      "id": "Total Protein",
+      "name": "Total Protein",
+      "range": [
+        6,
+        8.3
+      ],
+      "unit": "g/dL",
+      "fact": "Total protein in serum. Used to convert Albumin % to g/L for PhenoAge.",
+      "citation": "Clinical",
+      "step": 0.1,
+      "category": "metabolic",
+      "active": true,
+      "includeInSpider": false
+    },
+    {
+        "id": "Kreatinin",
+        "name": "Creatinine",
+        "range": [0.7, 1.3],
+        "unit": "mg/dL",
+        "fact": "Kidney function marker used in PhenoAge.",
+        "citation": "Levine et al. 2018",
+        "step": 0.01,
+        "category": "clinical",
+        "active": false,
+        "includeInSpider": false
+    },
+    {
+        "id": "CRP",
+        "name": "C-Reactive Protein (hs)",
+        "range": [0, 1],
+        "unit": "mg/L",
+        "fact": "Inflammation marker. Lower is better for PhenoAge.",
+        "citation": "Levine et al. 2018",
+        "step": 0.1,
+        "category": "clinical",
+        "active": false,
+        "includeInSpider": false
+    },
+    {
+        "id": "Lymphozyten",
+        "name": "Lymphocytes (Abs)",
+        "range": [1, 4],
+        "unit": "g/L",
+        "fact": "Absolute lymphocyte count. Used to calculate percentage if needed.",
+        "citation": "Clinical",
+        "step": 0.01,
+        "category": "CBC",
+        "active": false,
+        "includeInSpider": false
+    },
+    {
+        "id": "MCV",
+        "name": "Mean Cell Volume",
+        "range": [80, 100],
+        "unit": "fL",
+        "fact": "Red blood cell size. High MCV correlates with aging.",
+        "citation": "Levine et al. 2018",
+        "step": 0.1,
+        "category": "CBC",
+        "active": false,
+        "includeInSpider": false
+    },
+    {
+        "id": "RDW",
+        "name": "RDW",
+        "range": [11, 15],
+        "unit": "%",
+        "fact": "Red Cell Distribution Width. Variation in cell size increases with age.",
+        "citation": "Levine et al. 2018",
+        "step": 0.1,
+        "category": "CBC",
+        "active": false,
+        "includeInSpider": false
+    },
+    {
+        "id": "Alkalische Phosphatase (AP)",
+        "name": "Alkaline Phosphatase",
+        "range": [44, 147],
+        "unit": "IU/L",
+        "fact": "Liver/Bone enzyme used in PhenoAge.",
+        "citation": "Levine et al. 2018",
+        "step": 1,
+        "category": "clinical",
+        "active": false,
+        "includeInSpider": false
+    },
+    {
+        "id": "Leukozyten",
+        "name": "White Blood Cells",
+        "range": [4.5, 11],
+        "unit": "k/cumm",
+        "fact": "Immune system marker for PhenoAge.",
+        "citation": "Levine et al. 2018",
+        "step": 0.1,
+        "category": "CBC",
+        "active": false,
+        "includeInSpider": false
     }
 ];

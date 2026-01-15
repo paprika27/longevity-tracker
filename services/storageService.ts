@@ -1,4 +1,5 @@
 
+
 import { LogEntry, MetricConfig, MetricValues, AppSettings } from '../types';
 import { DEFAULT_METRICS, DEFAULT_REGIMEN, DEFAULT_CATEGORIES, DEFAULT_SETTINGS } from '../constants';
 
@@ -58,7 +59,18 @@ export const clearHistory = (): void => {
 export const getMetrics = (): MetricConfig[] => {
   try {
     const data = localStorage.getItem(METRICS_KEY);
-    return data ? JSON.parse(data) : DEFAULT_METRICS;
+    let metrics: MetricConfig[] = data ? JSON.parse(data) : DEFAULT_METRICS;
+    
+    // Auto-merge missing defaults (Crucial for updates like adding Functional Age)
+    const currentIds = new Set(metrics.map(m => m.id));
+    const missingDefaults = DEFAULT_METRICS.filter(d => !currentIds.has(d.id));
+    
+    if (missingDefaults.length > 0) {
+        metrics = [...metrics, ...missingDefaults];
+        saveMetrics(metrics); // Persist the merge
+    }
+    
+    return metrics;
   } catch (e) {
     console.error("Failed to load metrics", e);
     return DEFAULT_METRICS;

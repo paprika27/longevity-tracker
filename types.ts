@@ -1,4 +1,5 @@
 
+
 export interface MetricConfig {
   id: string;
   name: string;
@@ -64,4 +65,21 @@ export interface MetricStatusData {
     target: number;
     percent: number;
   };
+}
+
+export interface AgeFactor {
+    name: string;
+    impact: number; // Negative = makes you younger, Positive = older
+    value: string;
+}
+
+export interface BioAgeResult {
+    chronologicalAge: number;
+    biologicalAge: number;
+    ageDiff: number;
+    method: string;
+    factors: AgeFactor[];
+    missingMetrics: string[];
+    warnings?: string[];
+    confidence?: string;
 }

@@ -47,31 +47,28 @@ export const RadarView: React.FC<RadarViewProps> = ({ metrics, values }) => {
 
   if (activeMetrics.length < 3) {
       return (
-          <div className="w-full h-[400px] bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex flex-col items-center justify-center text-center">
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
               <p className="text-slate-500 mb-2">Not enough metrics for Spider Chart.</p>
-              <p className="text-xs text-slate-400">Enable at least 3 metrics in Settings / Spider.</p>
+              <p className="text-xs text-slate-400">Enable at least 3 metrics in Settings (check 'Spider').</p>
           </div>
       );
   }
 
   return (
-    <div className="w-full h-[400px] bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-      <h3 className="text-lg font-semibold text-slate-700 text-center mb-4">Holistic Balance</h3>
-      <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%">
         <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
-          <PolarGrid stroke="#e2e8f0" />
-          <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10 }} />
-          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-          <Radar
-            name="Score"
-            dataKey="score"
-            stroke="#0ea5e9"
-            strokeWidth={2}
-            fill="#0ea5e9"
-            fillOpacity={0.4}
-          />
+            <PolarGrid stroke="#e2e8f0" />
+            <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10 }} />
+            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+            <Radar
+                name="Score"
+                dataKey="score"
+                stroke="#0ea5e9"
+                strokeWidth={2}
+                fill="#0ea5e9"
+                fillOpacity={0.4}
+            />
         </RadarChart>
-      </ResponsiveContainer>
-    </div>
+    </ResponsiveContainer>
   );
 };
