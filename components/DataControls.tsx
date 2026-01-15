@@ -1,6 +1,6 @@
 
 import React, { useRef, useState } from 'react';
-import { Download, Upload, Loader2, FileJson, FileSpreadsheet } from 'lucide-react';
+import { Download, Upload, Loader2, FileJson, FileSpreadsheet, Wrench } from 'lucide-react';
 import { LogEntry, MetricConfig, MetricValues } from '../types';
 import * as db from '../services/storageService';
 
@@ -13,142 +13,10 @@ interface DataControlsProps {
 export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, onImportComplete }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
+  const repairInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
-  // --- EXCEL HANDLERS ---
-
-  const handleExcelExport = async () => {
-    if (entries.length === 0) {
-      alert("No data to export.");
-      return;
-    }
-    setLoading(true);
-
-    try {
-        const xlsxModule = await import('xlsx');
-        const XLSX = xlsxModule.default || xlsxModule;
-        
-        // Transform to Long Format: metric | value | unit | date | time
-        const rows: any[] = [];
-        
-        entries.forEach(entry => {
-            const dateObj = new Date(entry.timestamp);
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            const dateStr = `${year}-${month}-${day}`;
-            const timeStr = dateObj.toTimeString().slice(0, 5); // HH:MM
-
-            Object.entries(entry.values).forEach(([metricId, val]) => {
-                if (val !== null && val !== undefined) {
-                    const config = metrics.find(m => m.id === metricId);
-                    rows.push({
-                        metric: metricId,
-                        value: val,
-                        unit: config?.unit || '',
-                        date: dateStr,
-                        time: timeStr
-                    });
-                }
-            });
-        });
-
-        const worksheet = XLSX.utils.json_to_sheet(rows);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Longevity Data");
-
-        // Dynamic Import for Capacitor to avoid crash on web if missing
-        let isNative = false;
-        try {
-            const { Capacitor } = await import('@capacitor/core');
-            isNative = Capacitor.isNativePlatform();
-        } catch (e) {
-            // Capacitor not available, assume web
-        }
-
-        if (isNative) {
-            // --- NATIVE ANDROID/IOS EXPORT ---
-            try {
-                const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
-                const { Share } = await import('@capacitor/share');
-
-                // 1. Write to binary string (base64)
-                const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
-                const fileName = `LongevityTracker_Data_${new Date().getTime()}.xlsx`;
-
-                console.log('Attempting to write Excel file:', fileName);
-                console.log('File size (base64):', wbout.length, 'chars');
-
-                // 2. Save to Cache Directory with proper encoding
-                const result = await Filesystem.writeFile({
-                    path: fileName,
-                    data: wbout,
-                    directory: Directory.Cache,
-                    encoding: Encoding.UTF8
-                });
-                
-                console.log('File written successfully:', result.uri);
-
-                // 3. Share the file using the 'files' array (CRITICAL for Android)
-                // Convert file URI to proper format for sharing
-                let shareUri = result.uri;
-                
-                // For Android, we might need to use content:// URI
-                // Note: Capacitor handles file URIs automatically for sharing in most cases
-                // The FileProvider conversion is complex and may not be necessary
-                // Let's use the original URI and let Capacitor handle it
-                console.log('Using file URI for sharing:', result.uri);
-                
-                // If you need FileProvider support, you would need to:
-                // 1. Add proper Android native code
-                // 2. Use Capacitor plugins that support content URIs
-                // For now, we'll use the direct file URI which works in most cases
-
-                console.log('Sharing file with URI:', shareUri);
-                
-                await Share.share({
-                    title: 'Export Longevity Data',
-                    text: 'Here is your exported data file.',
-                    files: [shareUri], // Use 'files' instead of 'url' for local files
-                    dialogTitle: 'Save Data'
-                });
-            } catch (fsError: any) {
-                console.error("Native export error:", fsError);
-                
-                // Enhanced error messages
-                let errorMessage = 'Export failed: ';
-                if (fsError.message) {
-                    errorMessage += fsError.message;
-                } else if (fsError.code) {
-                    errorMessage += `Error ${fsError.code}`;
-                } else {
-                    errorMessage += JSON.stringify(fsError);
-                }
-                
-                // Specific fixes for common issues
-                if (fsError.message?.includes('permission') || fsError.message?.includes('Permission')) {
-                    errorMessage += '\n\nTry restarting the app or check app permissions.';
-                }
-                
-                if (fsError.message?.includes('base64') || fsError.message?.includes('encoding')) {
-                    errorMessage += '\n\nThere was an issue with file encoding.';
-                }
-                
-                alert(errorMessage);
-            }
-
-        } else {
-            // --- WEB EXPORT ---
-            XLSX.writeFile(workbook, "LongevityTracker_Data.xlsx");
-        }
-
-    } catch (error: any) {
-        console.error("Export failed:", error);
-        alert(`Export Failed: ${error.message}`);
-    } finally {
-        setLoading(false);
-    }
-  };
+  // --- HELPERS ---
 
   const parseDateString = (dateInput: any): string | null => {
       if (!dateInput) return null;
@@ -215,136 +83,207 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
       return isNaN(parsed) ? null : parsed;
   };
 
-  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processWorkbookData = (workbook: any, XLSX: any) => {
+    try {
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        // cellDates: true is critical for correctly parsing Excel date objects
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { cellDates: true });
 
+        const groupedData: Record<string, MetricValues> = {};
+        const newMetricsMap: Map<string, Partial<MetricConfig>> = new Map();
+        let importedCount = 0;
+
+        jsonData.forEach((row) => {
+                const normRow: any = {};
+                Object.keys(row).forEach(k => normRow[k.toLowerCase().trim()] = row[k]);
+
+                const metricId = normRow['metric'];
+                const rawVal = normRow['value'];
+                const unit = normRow['unit'] || '';
+                const rawDate = normRow['date'];
+                let timeStr = normRow['time'];
+
+                if (!metricId || rawVal === undefined || !rawDate) return;
+                
+                const val = parseMetricValue(rawVal);
+                if (val === null) return;
+
+                const dateStr = parseDateString(rawDate);
+                if (!dateStr) return;
+
+                // Time Normalization Logic
+                if (!timeStr) timeStr = "12:00";
+                
+                if (timeStr instanceof Date) {
+                    timeStr = timeStr.toTimeString().slice(0, 5);
+                } else if (typeof timeStr === 'number') {
+                    const totalSeconds = Math.round(timeStr * 86400);
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                } else {
+                    timeStr = String(timeStr).trim();
+                    if (!timeStr.match(/^\d{1,2}:\d{2}/)) timeStr = "12:00";
+                }
+
+                let timestamp = new Date().toISOString();
+                try {
+                    const d = new Date(`${dateStr}T${timeStr}`);
+                    if (!isNaN(d.getTime())) {
+                        timestamp = d.toISOString();
+                    } else {
+                        timestamp = new Date(dateStr).toISOString();
+                    }
+                } catch (e) {}
+
+                if (!groupedData[timestamp]) {
+                    groupedData[timestamp] = {};
+                }
+                groupedData[timestamp][metricId] = val;
+                importedCount++;
+
+                // Check if metric exists in system
+                const existing = metrics.find(m => m.id === metricId);
+                if (!existing) {
+                    newMetricsMap.set(metricId, { unit });
+                }
+        });
+
+        if (importedCount === 0) {
+            throw new Error("No valid data found in file.");
+        }
+
+        // Bulk save new metrics
+        if (newMetricsMap.size > 0) {
+            const existingMetrics = db.getMetrics();
+            const toAdd: MetricConfig[] = [];
+            newMetricsMap.forEach((conf, id) => {
+                if (!existingMetrics.find(m => m.id === id)) {
+                    toAdd.push({
+                        id,
+                        name: id.charAt(0).toUpperCase() + id.slice(1),
+                        range: [0, 100],
+                        unit: conf.unit || '',
+                        fact: 'Imported',
+                        citation: 'Import',
+                        step: 1,
+                        category: 'imported',
+                        active: true,
+                        includeInSpider: false
+                    });
+                }
+            });
+            if (toAdd.length > 0) {
+                    db.saveMetrics([...existingMetrics, ...toAdd]);
+            }
+        }
+
+        // Bulk save entries
+        Object.entries(groupedData).forEach(([ts, values]) => {
+            db.saveEntry(values, ts);
+        });
+
+        return importedCount;
+    } catch (e) {
+        throw e;
+    }
+  };
+
+  // --- EXPORT HANDLERS ---
+
+  const handleExcelExport = async () => {
+    if (entries.length === 0) {
+      alert("No data to export.");
+      return;
+    }
     setLoading(true);
+
     try {
         const xlsxModule = await import('xlsx');
         const XLSX = xlsxModule.default || xlsxModule;
         
-        const reader = new FileReader();
+        // Transform to Long Format: metric | value | unit | date | time
+        const rows: any[] = [];
         
-        reader.onload = (evt) => {
-            const bstr = evt.target?.result;
-            if (bstr) {
-                try {
-                    const workbook = XLSX.read(bstr, { type: 'binary' });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { cellDates: true } as any);
+        entries.forEach(entry => {
+            const dateObj = new Date(entry.timestamp);
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            const timeStr = dateObj.toTimeString().slice(0, 5); // HH:MM
 
-                    const groupedData: Record<string, MetricValues> = {};
-                    const newMetricsMap: Map<string, Partial<MetricConfig>> = new Map();
-                    let importedCount = 0;
-
-                    jsonData.forEach((row, rowIndex) => {
-                         const normRow: any = {};
-                         Object.keys(row).forEach(k => normRow[k.toLowerCase().trim()] = row[k]);
-
-                         const metricId = normRow['metric'];
-                         const rawVal = normRow['value'];
-                         const unit = normRow['unit'] || '';
-                         const rawDate = normRow['date'];
-                         let timeStr = normRow['time'];
-
-                         if (!metricId || rawVal === undefined || !rawDate) return;
-                         
-                         const val = parseMetricValue(rawVal);
-                         if (val === null) return;
-
-                         const dateStr = parseDateString(rawDate);
-                         if (!dateStr) return;
-
-                         if (!timeStr) timeStr = "12:00";
-                         
-                         if (timeStr instanceof Date) {
-                             timeStr = timeStr.toTimeString().slice(0, 5);
-                         } else if (typeof timeStr === 'number') {
-                             const totalSeconds = Math.round(timeStr * 86400);
-                             const hours = Math.floor(totalSeconds / 3600);
-                             const minutes = Math.floor((totalSeconds % 3600) / 60);
-                             timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-                         } else {
-                             timeStr = String(timeStr).trim();
-                             if (!timeStr.match(/^\d{1,2}:\d{2}/)) timeStr = "12:00";
-                         }
-
-                         let timestamp = new Date().toISOString();
-                         try {
-                             const d = new Date(`${dateStr}T${timeStr}`);
-                             if (!isNaN(d.getTime())) {
-                                 timestamp = d.toISOString();
-                             } else {
-                                 timestamp = new Date(dateStr).toISOString();
-                             }
-                         } catch (e) {}
-
-                         if (!groupedData[timestamp]) {
-                             groupedData[timestamp] = {};
-                         }
-                         groupedData[timestamp][metricId] = val;
-                         importedCount++;
-
-                         const existing = metrics.find(m => m.id === metricId);
-                         if (!existing) {
-                             newMetricsMap.set(metricId, { unit });
-                         }
+            Object.entries(entry.values).forEach(([metricId, val]) => {
+                if (val !== null && val !== undefined) {
+                    const config = metrics.find(m => m.id === metricId);
+                    rows.push({
+                        metric: metricId,
+                        value: val,
+                        unit: config?.unit || '',
+                        date: dateStr,
+                        time: timeStr
                     });
-
-                    if (importedCount === 0) {
-                        alert("No valid data found in file.");
-                        setLoading(false);
-                        return;
-                    }
-
-                    if (newMetricsMap.size > 0) {
-                        const existingMetrics = db.getMetrics();
-                        const toAdd: MetricConfig[] = [];
-                        newMetricsMap.forEach((conf, id) => {
-                            if (!existingMetrics.find(m => m.id === id)) {
-                                toAdd.push({
-                                    id,
-                                    name: id.charAt(0).toUpperCase() + id.slice(1),
-                                    range: [0, 100],
-                                    unit: conf.unit || '',
-                                    fact: 'Imported',
-                                    citation: 'Import',
-                                    step: 1,
-                                    category: 'imported',
-                                    active: true,
-                                    includeInSpider: false
-                                });
-                            }
-                        });
-                        if (toAdd.length > 0) {
-                             db.saveMetrics([...existingMetrics, ...toAdd]);
-                        }
-                    }
-
-                    Object.entries(groupedData).forEach(([ts, values]) => {
-                        db.saveEntry(values, ts);
-                    });
-
-                    alert(`Imported ${importedCount} points.`);
-                    onImportComplete();
-
-                } catch (err) {
-                    console.error("Parse error:", err);
-                    alert("Failed to parse file.");
-                } finally {
-                    setLoading(false);
-                    if (fileInputRef.current) fileInputRef.current.value = '';
                 }
+            });
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Longevity Data");
+
+        // Dynamic Import for Capacitor
+        let isNative = false;
+        try {
+            const { Capacitor } = await import('@capacitor/core');
+            isNative = Capacitor.isNativePlatform();
+        } catch (e) {}
+
+        if (isNative) {
+            try {
+                const { Filesystem, Directory } = await import('@capacitor/filesystem');
+                const { Share } = await import('@capacitor/share');
+
+                const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+                const fileName = `LongevityTracker_Data_${new Date().getTime()}.xlsx`;
+
+                const result = await Filesystem.writeFile({
+                    path: fileName,
+                    data: wbout,
+                    directory: Directory.Cache, 
+                    // CRITICAL FIX: Removed 'encoding: Encoding.UTF8' to ensure binary integrity
+                });
+                
+                await Share.share({
+                    title: 'Export Longevity Data',
+                    text: 'Here is your exported data file.',
+                    files: [result.uri],
+                    dialogTitle: 'Save Data'
+                });
+            } catch (fsError: any) {
+                alert(`Native Export Failed: ${fsError.message}`);
             }
-        };
-        reader.readAsBinaryString(file);
-    } catch (error) {
-        console.error("Import load error:", error);
+
+        } else {
+            // Robust Web Export
+            const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "LongevityTracker_Data.xlsx";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+    } catch (error: any) {
+        console.error("Export failed:", error);
+        alert(`Export Failed: ${error.message}`);
+    } finally {
         setLoading(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        alert("Failed to load Excel library.");
     }
   };
 
@@ -395,6 +334,109 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
       }
   };
 
+  // --- IMPORT HANDLERS ---
+
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    try {
+        const xlsxModule = await import('xlsx');
+        const XLSX = xlsxModule.default || xlsxModule;
+        
+        // Use modern arrayBuffer API for cleaner code
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const count = processWorkbookData(workbook, XLSX);
+        
+        alert(`Imported ${count} points.`);
+        onImportComplete();
+    } catch (error) {
+        console.error("Import load error:", error);
+        alert("Failed to parse file.");
+    } finally {
+        setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRepairImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setLoading(true);
+      if (!confirm("Rescue Tool: This will attempt to recover data from corrupted files (including files accidentally saved as text/base64).\n\nContinue?")) {
+          setLoading(false);
+          if (repairInputRef.current) repairInputRef.current.value = '';
+          return;
+      }
+
+      try {
+          const xlsxModule = await import('xlsx');
+          const XLSX = xlsxModule.default || xlsxModule;
+
+          let success = false;
+          let recoveryType = '';
+          let count = 0;
+
+          // Strategy A: Standard Binary (Array Buffer)
+          try {
+             const buffer = await file.arrayBuffer();
+             const workbook = XLSX.read(buffer, { type: 'array' });
+             count = processWorkbookData(workbook, XLSX);
+             success = true;
+             recoveryType = 'Standard Binary';
+          } catch(e) { 
+              console.log("Standard read failed, attempting text rescue strategies..."); 
+          }
+
+          // Strategy B: Text Rescue (Base64-as-UTF8 or Raw CSV)
+          if (!success) {
+              try {
+                  const text = await file.text();
+                  const cleanText = text.trim();
+
+                  let base64Candidate = cleanText;
+                  // Handle potential Data URI prefix if user copy-pasted data URL
+                  if (cleanText.startsWith('data:')) {
+                       base64Candidate = cleanText.split(',')[1] || cleanText;
+                  }
+
+                  // Excel/Zip starts with 'PK..' which in Base64 often starts with 'UEsDB' or 'UEs'
+                  if (base64Candidate.startsWith('UEsDB') || base64Candidate.startsWith('UEs')) {
+                       const workbook = XLSX.read(base64Candidate, { type: 'base64' });
+                       count = processWorkbookData(workbook, XLSX);
+                       success = true;
+                       recoveryType = 'Base64 Text Rescue';
+                  } 
+                  // Fallback: Try reading as standard text (CSV/XML)
+                  else {
+                      const workbook = XLSX.read(text, { type: 'string' });
+                      count = processWorkbookData(workbook, XLSX);
+                      success = true;
+                      recoveryType = 'CSV/Text Parsing';
+                  }
+              } catch(e) { 
+                  console.log("Text rescue failed."); 
+              }
+          }
+
+          if (success) {
+              alert(`REPAIR SUCCESS (${recoveryType})!\n\nRecovered ${count} entries.\n\nIMPORTANT: Please export your data again immediately to save a clean .xlsx file.`);
+              onImportComplete();
+          } else {
+              alert("Repair Failed: Could not recognize file format.\n\nThe file might be encrypted, empty, or completely corrupted.");
+          }
+
+      } catch (error: any) {
+          alert(`Repair Error: ${error.message}`);
+      } finally {
+          setLoading(false);
+          if (repairInputRef.current) repairInputRef.current.value = '';
+      }
+  };
+
   const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -426,6 +468,7 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
   return (
     <div className="flex flex-wrap gap-2">
       <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleExcelImport} className="hidden" />
+      <input type="file" accept=".xlsx, .xls, .csv, .txt" ref={repairInputRef} onChange={handleRepairImport} className="hidden" />
       <input type="file" accept=".json" ref={jsonInputRef} onChange={handleJsonImport} className="hidden" />
       
       <div className="flex gap-1 bg-white border border-slate-300 rounded-md shadow-sm">
@@ -438,9 +481,17 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
         </button>
         <button 
             onClick={() => fileInputRef.current?.click()} disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 border-r border-slate-200 transition-colors disabled:opacity-50"
+            title="Import Excel"
         >
             <Upload className="w-3 h-3" />
+        </button>
+        <button 
+            onClick={() => repairInputRef.current?.click()} disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50"
+            title="Rescue/Repair Corrupt File"
+        >
+            <Wrench className="w-3 h-3" />
         </button>
       </div>
 
