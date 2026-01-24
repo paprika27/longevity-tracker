@@ -126,8 +126,13 @@ app.post('/api/sync', async (req, res) => {
   res.json(finalState);
 });
 
-// Bind to 0.0.0.0 is crucial for Docker networking
+// Start server immediately
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Local Access: http://localhost:${PORT}`);
+  
+  // Load DB after server starts
+  loadDb().catch(err => {
+    console.error('Failed to load database:', err);
+  });
 });

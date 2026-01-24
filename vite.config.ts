@@ -6,6 +6,6 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ['@capacitor/core', '@capacitor/filesystem', '@capacitor/share', '@capacitor/android']
+    exclude: ['@capacitor/core', '@capacitor/filesystem', '@capacitor/share', '@capacitor/android', '@capacitor/browser']
   }
 });

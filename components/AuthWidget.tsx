@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal, Wifi, ShieldAlert, ExternalLink } from 'lucide-react';
+import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal, Wifi, ShieldAlert, ExternalLink, Globe, Activity, X, Lock, RefreshCw, CheckCircle2, ChevronRight, Image as ImageIcon } from 'lucide-react';
 import * as authService from '../services/authService';
 
 interface AuthWidgetProps {
@@ -11,105 +11,115 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     const [user, setUser] = useState<string | null>(localStorage.getItem('lt_user'));
     const [serverUrl, setServerUrl] = useState<string>(localStorage.getItem('lt_server_url') || 'http://localhost:3000');
     
-    const [isOpen, setIsOpen] = useState(false);
+    // Legacy Mode: Forces standard window.fetch instead of CapacitorHttp
+    const [useWebFetch, setUseWebFetch] = useState<boolean>(() => {
+        return localStorage.getItem('lt_use_web_fetch') === 'true';
+    });
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
     const [loading, setLoading] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+    const [statusMsg, setStatusMsg] = useState('');
+    
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
     const [lastSync, setLastSync] = useState<string | null>(localStorage.getItem('lt_last_sync'));
-    
-    // Certificate / Redirect Warning UI
-    const [showCertWarning, setShowCertWarning] = useState(false);
     
     // Debug Logging
     const [logs, setLogs] = useState<string[]>([]);
-    const [showLogs, setShowLogs] = useState(false);
     
     // Platform State
     const [isNative, setIsNative] = useState(false);
 
+    // Image Probe State (to detect if content loads even if fetch fails - e.g. CORS vs SSL)
+    const [probeSuccess, setProbeSuccess] = useState<boolean | null>(null);
+
     useEffect(() => {
-        // Dynamic import to determine platform safety
         import('@capacitor/core').then(mod => {
             setIsNative(mod.Capacitor.isNativePlatform());
-        }).catch(() => {
-            setIsNative(false);
-        });
+        }).catch(() => setIsNative(false));
     }, []);
+
+    const toggleWebFetch = (val: boolean) => {
+        setUseWebFetch(val);
+        localStorage.setItem('lt_use_web_fetch', String(val));
+        addLog(`Switched to ${val ? 'Web Fetch' : 'Native HTTP'}`);
+    };
 
     const addLog = (msg: string) => {
         const time = new Date().toLocaleTimeString();
         setLogs(prev => [`[${time}] ${msg}`, ...prev]);
     };
 
-    const isLocalhost = serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1');
-    const isHttp = serverUrl.startsWith('http://');
+    const runImageProbe = (url: string) => {
+        // Tries to load an image from the server. If this succeeds but fetch fails, it's CORS.
+        // If this fails, it's likely SSL or Network.
+        setProbeSuccess(null);
+        const img = new Image();
+        img.onload = () => {
+            addLog("Image Probe: SUCCESS (Basic connectivity OK)");
+            setProbeSuccess(true);
+        };
+        img.onerror = () => {
+             addLog("Image Probe: FAILED (Blocked or Network Down)");
+             setProbeSuccess(false);
+        };
+        // Use a dummy image path or root if server serves index.html as fallback, usually triggers 200 OK
+        // Adding timestamp to prevent cache
+        img.src = `${url.replace(/\/$/, '')}/?t=${Date.now()}`; 
+    };
 
-    // Opens system browser to the server URL so user can manually trust the certificate
-    const handleOpenTrust = async () => {
+    const handleTestConnection = async () => {
+        setConnectionStatus('testing');
+        setStatusMsg('Pinging server...');
+        setProbeSuccess(null);
+        addLog(`Testing Connection to: ${serverUrl}`);
+        
+        // Run passive probe
+        runImageProbe(serverUrl);
+
         try {
-            const { Browser } = await import('@capacitor/browser');
-            await Browser.open({ url: serverUrl });
-        } catch {
-             window.open(serverUrl, '_blank');
+            const result = await authService.checkConnection(serverUrl, useWebFetch);
+            addLog(`Result: ${result.ok ? 'SUCCESS' : 'FAILED'} (${result.status}) - ${result.msg}`);
+            
+            if (result.ok) {
+                setConnectionStatus('success');
+                setStatusMsg('Server Reachable');
+            } else {
+                setConnectionStatus('failed');
+                if (result.msg.includes('Redirect')) {
+                    setStatusMsg('Redirect Detected (Protocol Mismatch?)');
+                } else if (result.msg.includes('Failed to fetch') || result.msg.includes('Trust anchor')) {
+                    setStatusMsg('SSL / Network Error');
+                } else if (result.status === 408) {
+                    setStatusMsg('Timeout (Check IP/Firewall)');
+                } else {
+                    setStatusMsg(`Error: ${result.msg}`);
+                }
+            }
+        } catch (e: any) {
+            setConnectionStatus('failed');
+            setStatusMsg(e.message);
         }
     };
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setError('');
-        setShowCertWarning(false);
-        setLogs([]); // Clear logs on new attempt
-        
-        addLog(`Initiating Login to: ${serverUrl}`);
-        
-        // Android Warning Checks
-        if (isNative) {
-            if (isLocalhost) {
-                addLog('WARN: Using localhost on Android device (this refers to phone, not PC).');
-            }
-            if (isHttp) {
-                addLog('WARN: Using HTTP. Android requires Cleartext Traffic to be enabled in manifest.');
-            }
-        }
+        setLogs([]); 
         
         try {
             localStorage.setItem('lt_server_url', serverUrl);
-            
-            addLog(`Sending POST to ${serverUrl}/api/login...`);
-            const token = await authService.login(username, password, serverUrl);
-            addLog(`Login Success! Token: ${token}`);
-            
+            const token = await authService.login(username, password, serverUrl, useWebFetch);
             localStorage.setItem('lt_user', token); 
             setUser(token);
-            setIsOpen(false);
-            
-            // Auto sync
             await handleSync(token, serverUrl);
+            setIsModalOpen(false); // Close on success
         } catch (err: any) {
-            console.error(err);
-            const msg = err.message || 'Unknown Error';
-            addLog(`ERROR: ${msg}`);
-            
-            // Detect SSL / Redirect Errors
-            // 308: Traefik Redirecting HTTP->HTTPS
-            // Network Error: Often caused by untrusted SSL in Capacitor
-            if (msg.includes('308') || msg.includes('SSL') || msg.includes('Network Error') || msg.includes('Failed to fetch')) {
-                setShowCertWarning(true);
-                if (msg.includes('308')) {
-                    addLog('HINT: Server sent 308 Redirect. It might be forcing HTTPS with an untrusted certificate.');
-                }
-            }
-            
-            if (msg.includes('Failed to fetch')) {
-                 addLog(`HINT: 'Failed to fetch' usually means Network Error.`);
-                 if (isNative && isLocalhost) {
-                     addLog(`FIX: Change 'localhost' to your PC's IP (e.g. 192.168.1.5).`);
-                 }
-            }
-            setError('Connection failed. See logs.');
-            setShowLogs(true); // Auto open logs on error
+            setConnectionStatus('failed');
+            setStatusMsg(err.message || 'Login Failed');
+            addLog(`ERROR: ${err.message}`);
         } finally {
             setLoading(false);
         }
@@ -118,158 +128,182 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     const handleLogout = () => {
         localStorage.removeItem('lt_user');
         setUser(null);
-        setIsOpen(false);
     };
 
     const handleSync = async (tokenOverride?: string, urlOverride?: string) => {
         const token = tokenOverride || user;
         const url = urlOverride || serverUrl;
-        
         if (!token) return;
 
         setLoading(true);
-        addLog(`Sync started...`);
         try {
-            await authService.syncData(token, url);
+            await authService.syncData(token, url, useWebFetch);
             const now = new Date().toLocaleTimeString();
             localStorage.setItem('lt_last_sync', now);
             setLastSync(now);
             onSyncComplete();
-            addLog(`Sync Completed Successfully at ${now}`);
+            addLog(`Sync OK at ${now}`);
         } catch (err: any) {
             addLog(`Sync ERROR: ${err.message}`);
-            if (err.message.includes('308') || err.message.includes('SSL')) {
-                setShowCertWarning(true);
-            }
-            if (!isOpen) alert(`Sync failed. Check connection.`);
+            alert(`Sync Failed: ${err.message}`);
         } finally {
             setLoading(false);
         }
     };
 
+    const handleRedirectTrust = () => {
+        if (confirm("We will now redirect you to your server URL.\n\n1. If you see a warning, click 'Advanced' -> 'Proceed'.\n2. Once the page loads (it might say 'Longevity Server OK'), use your device's BACK button to return here.\n\nReady?")) {
+            window.location.href = serverUrl;
+        }
+    };
+
     if (!user) {
         return (
-            <div className="relative">
-                <button 
-                    onClick={() => setIsOpen(!isOpen)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors shadow-sm"
-                >
-                    <LogIn className="w-3 h-3" /> Login / Sync
-                </button>
+            <>
+            <button 
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors shadow-sm"
+            >
+                <LogIn className="w-3 h-3" /> Connect Server
+            </button>
 
-                {isOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-4 z-50">
-                        <h3 className="text-sm font-bold text-slate-800 mb-2">Sync Settings</h3>
-                        
-                        <form onSubmit={handleLogin} className="space-y-3">
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase">Server URL</label>
-                                <div className="relative">
-                                    <Server className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+            {isModalOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Server className="w-5 h-5 text-indigo-600" /> Server Connection
+                            </h2>
+                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto">
+                            {/* Server URL Input */}
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Server URL</label>
+                                <div className="flex gap-2">
                                     <input 
                                         type="text" 
-                                        className={`w-full text-sm border-slate-300 rounded-md pl-8 ${isNative && (isLocalhost || isHttp) ? 'border-orange-300 bg-orange-50' : ''}`}
-                                        placeholder="http://192.168.1.X:3000"
-                                        value={serverUrl} onChange={e => setServerUrl(e.target.value)}
-                                        required
+                                        className="flex-1 rounded-md border-slate-300 shadow-sm text-sm"
+                                        placeholder="https://192.168.1.X:3000"
+                                        value={serverUrl} 
+                                        onChange={e => { setServerUrl(e.target.value); setConnectionStatus('idle'); }}
                                     />
-                                </div>
-                                
-                                {isNative && (
-                                    <div className="mt-2 space-y-1">
-                                        {isLocalhost && (
-                                            <div className="flex gap-2 p-1.5 bg-orange-50 border border-orange-100 rounded text-[10px] text-orange-800 leading-tight">
-                                                <Wifi className="w-3 h-3 shrink-0 mt-0.5" />
-                                                <p>
-                                                    <strong>Don't use localhost.</strong> Use your PC's IP (e.g. 192.168.1.5).
-                                                </p>
-                                            </div>
-                                        )}
-                                        {isHttp && (
-                                            <div className="flex gap-2 p-1.5 bg-red-50 border border-red-100 rounded text-[10px] text-red-800 leading-tight">
-                                                <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
-                                                <p>
-                                                    <strong>HTTP Blocked?</strong> Android blocks 'http://' by default. You may need to enable "Cleartext Traffic" in your app config or use HTTPS.
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                            
-                            <div className="border-t border-slate-100 my-2"></div>
-
-                            <div>
-                                <input 
-                                    type="text" placeholder="Username" 
-                                    className="w-full text-sm border-slate-300 rounded-md mb-2"
-                                    value={username} onChange={e => setUsername(e.target.value)}
-                                    required
-                                />
-                                <input 
-                                    type="password" placeholder="Password" 
-                                    className="w-full text-sm border-slate-300 rounded-md"
-                                    value={password} onChange={e => setPassword(e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            {error && !showCertWarning && <p className="text-xs text-red-500 bg-red-50 p-2 rounded">{error}</p>}
-                            
-                            {/* Certificate Warning & Trust Flow */}
-                            {showCertWarning && (
-                                <div className="bg-amber-50 border border-amber-200 rounded p-2.5">
-                                    <div className="flex gap-2 items-start mb-2">
-                                        <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                        <div className="text-[10px] text-amber-900 leading-tight">
-                                            <p className="font-bold mb-1">Security / Redirect Error</p>
-                                            <p>This often happens with self-signed certificates or HTTP-to-HTTPS redirects (Error 308) on private networks.</p>
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] font-semibold text-center mb-2">Are you sure you want to trust this server?</p>
                                     <button 
-                                        type="button"
-                                        onClick={handleOpenTrust}
-                                        className="w-full bg-amber-600 text-white text-xs font-medium py-1.5 rounded flex items-center justify-center gap-1 hover:bg-amber-700"
+                                        onClick={handleTestConnection}
+                                        className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-2 rounded-md border border-slate-200"
+                                        title="Test Connection"
                                     >
-                                        <ExternalLink className="w-3 h-3" /> Open in Browser to Trust
+                                        {connectionStatus === 'testing' ? <Loader2 className="w-4 h-4 animate-spin"/> : <RefreshCw className="w-4 h-4"/>}
                                     </button>
                                 </div>
-                            )}
+                            </div>
 
-                            <button 
-                                type="submit" 
-                                disabled={loading}
-                                className="w-full bg-indigo-600 text-white text-xs font-bold py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 mt-2"
-                            >
-                                {loading ? 'Connecting...' : 'Login & Sync'}
-                            </button>
-                        </form>
-
-                        {/* DEBUG TOGGLE */}
-                        <div className="mt-4 border-t border-slate-100 pt-2">
-                            <button 
-                                type="button" 
-                                onClick={() => setShowLogs(!showLogs)}
-                                className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 uppercase font-bold"
-                            >
-                                <Terminal className="w-3 h-3" /> {showLogs ? 'Hide' : 'Show'} Debug Logs
-                            </button>
-                            
-                            {showLogs && (
-                                <div className="mt-2 bg-slate-900 rounded p-2 h-32 overflow-y-auto custom-scrollbar">
-                                    {logs.length === 0 && <p className="text-[10px] text-slate-500 italic">No logs yet...</p>}
-                                    {logs.map((log, i) => (
-                                        <div key={i} className="text-[10px] font-mono text-green-400 mb-1 break-all">
-                                            {log}
+                            {/* Connection Status & Fixes */}
+                            {connectionStatus === 'failed' && (
+                                <div className="mb-6 p-3 bg-red-50 border border-red-100 rounded-lg">
+                                    <div className="flex items-start gap-2 mb-2">
+                                        <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-bold text-red-700">Connection Failed</p>
+                                            <p className="text-xs text-red-600">{statusMsg}</p>
                                         </div>
-                                    ))}
+                                    </div>
+                                    
+                                    {/* DIAGNOSTIC HINTS */}
+                                    <div className="text-[10px] text-red-800 bg-red-100/50 p-2 rounded mb-2">
+                                        {probeSuccess === true && <p><strong>Analysis:</strong> Basic connectivity works (Image Probe OK), but API Fetch Failed. This usually means <strong>CORS</strong> issues on the server.</p>}
+                                        {probeSuccess === false && <p><strong>Analysis:</strong> Image Probe Failed. The device cannot reach the server at all, or the SSL certificate is totally rejected.</p>}
+                                        {probeSuccess === null && <p><strong>Analysis:</strong> Probe inconclusive.</p>}
+                                    </div>
+
+                                    {/* Smart Action Buttons */}
+                                    <div className="mt-2 flex flex-col gap-2">
+                                        {useWebFetch ? (
+                                            <button 
+                                                onClick={handleRedirectTrust}
+                                                className="w-full bg-white border border-red-200 text-red-700 hover:bg-red-50 text-xs font-bold py-2 rounded flex items-center justify-center gap-2"
+                                            >
+                                                <ExternalLink className="w-3 h-3" /> Redirect to Trust Certificate
+                                            </button>
+                                        ) : (
+                                            <p className="text-[10px] text-red-600 italic">
+                                                Enable "Force Web Fetch" below to fix SSL issues manually.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             )}
+
+                            {connectionStatus === 'success' && (
+                                <div className="mb-6 p-3 bg-green-50 border border-green-100 rounded-lg flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                    <p className="text-sm text-green-700 font-medium">{statusMsg}</p>
+                                </div>
+                            )}
+
+                            {/* Advanced Options Toggle */}
+                            <div className="mb-6">
+                                <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={useWebFetch} 
+                                        onChange={e => toggleWebFetch(e.target.checked)}
+                                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span>Force Web Fetch (Required for Self-Signed SSL)</span>
+                                </label>
+                            </div>
+
+                            <form onSubmit={handleLogin} className="space-y-4 pt-4 border-t border-slate-100">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Username</label>
+                                        <input 
+                                            type="text" 
+                                            className="w-full rounded-md border-slate-300 shadow-sm text-sm"
+                                            value={username} onChange={e => setUsername(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
+                                        <input 
+                                            type="password" 
+                                            className="w-full rounded-md border-slate-300 shadow-sm text-sm"
+                                            value={password} onChange={e => setPassword(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <button 
+                                    type="submit" 
+                                    disabled={loading}
+                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                                >
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <LogIn className="w-4 h-4"/>}
+                                    Login & Sync
+                                </button>
+                            </form>
+                            
+                            {/* Debug Log Viewer */}
+                            <div className="mt-4 pt-4 border-t border-slate-100">
+                                <details>
+                                    <summary className="text-[10px] text-slate-400 font-bold uppercase cursor-pointer hover:text-slate-600">View Debug Logs</summary>
+                                    <div className="mt-2 bg-slate-900 rounded p-2 h-24 overflow-y-auto custom-scrollbar">
+                                        {logs.map((log, i) => (
+                                            <div key={i} className="text-[10px] font-mono text-green-400 mb-1 border-b border-white/5 pb-0.5">{log}</div>
+                                        ))}
+                                    </div>
+                                </details>
+                            </div>
                         </div>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
+            </>
         );
     }
 
@@ -280,7 +314,7 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
                     <User className="w-3 h-3"/> {user}
                 </span>
                 <span className="text-[10px] text-slate-400">
-                    Last sync: {lastSync || 'Never'}
+                    Synced: {lastSync || 'Never'}
                 </span>
             </div>
             
