@@ -61,8 +61,6 @@ async function saveDb() {
   await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2));
 }
 
-await loadDb();
-
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   console.log(`Login attempt: ${username}`);
