@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal, Wifi } from 'lucide-react';
+import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal, Wifi, ShieldAlert, ExternalLink } from 'lucide-react';
 import * as authService from '../services/authService';
 
 interface AuthWidgetProps {
@@ -17,6 +17,9 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [lastSync, setLastSync] = useState<string | null>(localStorage.getItem('lt_last_sync'));
+    
+    // Certificate / Redirect Warning UI
+    const [showCertWarning, setShowCertWarning] = useState(false);
     
     // Debug Logging
     const [logs, setLogs] = useState<string[]>([]);
@@ -42,10 +45,21 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     const isLocalhost = serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1');
     const isHttp = serverUrl.startsWith('http://');
 
+    // Opens system browser to the server URL so user can manually trust the certificate
+    const handleOpenTrust = async () => {
+        try {
+            const { Browser } = await import('@capacitor/browser');
+            await Browser.open({ url: serverUrl });
+        } catch {
+             window.open(serverUrl, '_blank');
+        }
+    };
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError('');
+        setShowCertWarning(false);
         setLogs([]); // Clear logs on new attempt
         
         addLog(`Initiating Login to: ${serverUrl}`);
@@ -77,16 +91,24 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
             console.error(err);
             const msg = err.message || 'Unknown Error';
             addLog(`ERROR: ${msg}`);
+            
+            // Detect SSL / Redirect Errors
+            // 308: Traefik Redirecting HTTP->HTTPS
+            // Network Error: Often caused by untrusted SSL in Capacitor
+            if (msg.includes('308') || msg.includes('SSL') || msg.includes('Network Error') || msg.includes('Failed to fetch')) {
+                setShowCertWarning(true);
+                if (msg.includes('308')) {
+                    addLog('HINT: Server sent 308 Redirect. It might be forcing HTTPS with an untrusted certificate.');
+                }
+            }
+            
             if (msg.includes('Failed to fetch')) {
                  addLog(`HINT: 'Failed to fetch' usually means Network Error.`);
                  if (isNative && isLocalhost) {
                      addLog(`FIX: Change 'localhost' to your PC's IP (e.g. 192.168.1.5).`);
                  }
-                 if (isNative && isHttp) {
-                     addLog(`FIX: Ensure 'usesCleartextTraffic' is true in AndroidManifest.`);
-                 }
             }
-            setError('Connection failed. Check Logs.');
+            setError('Connection failed. See logs.');
             setShowLogs(true); // Auto open logs on error
         } finally {
             setLoading(false);
@@ -116,6 +138,9 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
             addLog(`Sync Completed Successfully at ${now}`);
         } catch (err: any) {
             addLog(`Sync ERROR: ${err.message}`);
+            if (err.message.includes('308') || err.message.includes('SSL')) {
+                setShowCertWarning(true);
+            }
             if (!isOpen) alert(`Sync failed. Check connection.`);
         } finally {
             setLoading(false);
@@ -189,12 +214,33 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
                                 />
                             </div>
 
-                            {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded">{error}</p>}
+                            {error && !showCertWarning && <p className="text-xs text-red-500 bg-red-50 p-2 rounded">{error}</p>}
                             
+                            {/* Certificate Warning & Trust Flow */}
+                            {showCertWarning && (
+                                <div className="bg-amber-50 border border-amber-200 rounded p-2.5">
+                                    <div className="flex gap-2 items-start mb-2">
+                                        <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                        <div className="text-[10px] text-amber-900 leading-tight">
+                                            <p className="font-bold mb-1">Security / Redirect Error</p>
+                                            <p>This often happens with self-signed certificates or HTTP-to-HTTPS redirects (Error 308) on private networks.</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] font-semibold text-center mb-2">Are you sure you want to trust this server?</p>
+                                    <button 
+                                        type="button"
+                                        onClick={handleOpenTrust}
+                                        className="w-full bg-amber-600 text-white text-xs font-medium py-1.5 rounded flex items-center justify-center gap-1 hover:bg-amber-700"
+                                    >
+                                        <ExternalLink className="w-3 h-3" /> Open in Browser to Trust
+                                    </button>
+                                </div>
+                            )}
+
                             <button 
                                 type="submit" 
                                 disabled={loading}
-                                className="w-full bg-indigo-600 text-white text-xs font-bold py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                                className="w-full bg-indigo-600 text-white text-xs font-bold py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50 mt-2"
                             >
                                 {loading ? 'Connecting...' : 'Login & Sync'}
                             </button>

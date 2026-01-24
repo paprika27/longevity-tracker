@@ -1,6 +1,6 @@
 
 import React, { useRef, useState } from 'react';
-import { Download, Upload, Loader2, FileJson, FileSpreadsheet, Wrench } from 'lucide-react';
+import { Download, Upload, Loader2, FileJson, FileSpreadsheet } from 'lucide-react';
 import { LogEntry, MetricConfig, MetricValues } from '../types';
 import * as db from '../services/storageService';
 
@@ -13,7 +13,6 @@ interface DataControlsProps {
 export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, onImportComplete }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
-  const repairInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
   // --- HELPERS ---
@@ -334,107 +333,62 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
       }
   };
 
-  // --- IMPORT HANDLERS ---
+  // --- SMART IMPORT HANDLER ---
 
-  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSmartImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setLoading(true);
+    let count = 0;
+    let strategy = '';
+
     try {
         const xlsxModule = await import('xlsx');
         const XLSX = xlsxModule.default || xlsxModule;
         
-        // Use modern arrayBuffer API for cleaner code
-        const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: 'array' });
-        const count = processWorkbookData(workbook, XLSX);
+        // --- STRATEGY 1: Standard Binary (Excel) ---
+        try {
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            count = processWorkbookData(workbook, XLSX);
+            strategy = 'Standard Excel';
+        } catch (binaryError) {
+            console.log("Strategy 1 (Binary) failed, attempting rescue...", binaryError);
+
+            // --- STRATEGY 2: Base64 / Text Rescue ---
+            const text = await file.text();
+            const cleanText = text.trim();
+            
+            // Check for Base64 Signature
+            // Excel/Zip starts with 'PK..', in Base64 often 'UEsDB' or 'UEs'
+            if (cleanText.startsWith('data:') || cleanText.startsWith('UEsDB') || cleanText.startsWith('UEs')) {
+                 let base64Candidate = cleanText;
+                 if (cleanText.startsWith('data:')) {
+                      base64Candidate = cleanText.split(',')[1] || cleanText;
+                 }
+                 const workbook = XLSX.read(base64Candidate, { type: 'base64' });
+                 count = processWorkbookData(workbook, XLSX);
+                 strategy = 'Base64 Rescue';
+            } 
+            // --- STRATEGY 3: Plain Text / CSV ---
+            else {
+                 const workbook = XLSX.read(text, { type: 'string' });
+                 count = processWorkbookData(workbook, XLSX);
+                 strategy = 'CSV/Text';
+            }
+        }
         
-        alert(`Imported ${count} points.`);
+        alert(`Import Successful via ${strategy}!\nAdded ${count} data points.`);
         onImportComplete();
-    } catch (error) {
-        console.error("Import load error:", error);
-        alert("Failed to parse file.");
+
+    } catch (error: any) {
+        console.error("All import strategies failed:", error);
+        alert(`Import Failed: Could not read file format.\n${error.message}`);
     } finally {
         setLoading(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  };
-
-  const handleRepairImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      setLoading(true);
-      if (!confirm("Rescue Tool: This will attempt to recover data from corrupted files (including files accidentally saved as text/base64).\n\nContinue?")) {
-          setLoading(false);
-          if (repairInputRef.current) repairInputRef.current.value = '';
-          return;
-      }
-
-      try {
-          const xlsxModule = await import('xlsx');
-          const XLSX = xlsxModule.default || xlsxModule;
-
-          let success = false;
-          let recoveryType = '';
-          let count = 0;
-
-          // Strategy A: Standard Binary (Array Buffer)
-          try {
-             const buffer = await file.arrayBuffer();
-             const workbook = XLSX.read(buffer, { type: 'array' });
-             count = processWorkbookData(workbook, XLSX);
-             success = true;
-             recoveryType = 'Standard Binary';
-          } catch(e) { 
-              console.log("Standard read failed, attempting text rescue strategies..."); 
-          }
-
-          // Strategy B: Text Rescue (Base64-as-UTF8 or Raw CSV)
-          if (!success) {
-              try {
-                  const text = await file.text();
-                  const cleanText = text.trim();
-
-                  let base64Candidate = cleanText;
-                  // Handle potential Data URI prefix if user copy-pasted data URL
-                  if (cleanText.startsWith('data:')) {
-                       base64Candidate = cleanText.split(',')[1] || cleanText;
-                  }
-
-                  // Excel/Zip starts with 'PK..' which in Base64 often starts with 'UEsDB' or 'UEs'
-                  if (base64Candidate.startsWith('UEsDB') || base64Candidate.startsWith('UEs')) {
-                       const workbook = XLSX.read(base64Candidate, { type: 'base64' });
-                       count = processWorkbookData(workbook, XLSX);
-                       success = true;
-                       recoveryType = 'Base64 Text Rescue';
-                  } 
-                  // Fallback: Try reading as standard text (CSV/XML)
-                  else {
-                      const workbook = XLSX.read(text, { type: 'string' });
-                      count = processWorkbookData(workbook, XLSX);
-                      success = true;
-                      recoveryType = 'CSV/Text Parsing';
-                  }
-              } catch(e) { 
-                  console.log("Text rescue failed."); 
-              }
-          }
-
-          if (success) {
-              alert(`REPAIR SUCCESS (${recoveryType})!\n\nRecovered ${count} entries.\n\nIMPORTANT: Please export your data again immediately to save a clean .xlsx file.`);
-              onImportComplete();
-          } else {
-              alert("Repair Failed: Could not recognize file format.\n\nThe file might be encrypted, empty, or completely corrupted.");
-          }
-
-      } catch (error: any) {
-          alert(`Repair Error: ${error.message}`);
-      } finally {
-          setLoading(false);
-          if (repairInputRef.current) repairInputRef.current.value = '';
-      }
   };
 
   const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -467,8 +421,7 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
 
   return (
     <div className="flex flex-wrap gap-2">
-      <input type="file" accept=".xlsx, .xls" ref={fileInputRef} onChange={handleExcelImport} className="hidden" />
-      <input type="file" accept=".xlsx, .xls, .csv, .txt" ref={repairInputRef} onChange={handleRepairImport} className="hidden" />
+      <input type="file" accept=".xlsx, .xls, .csv, .txt" ref={fileInputRef} onChange={handleSmartImport} className="hidden" />
       <input type="file" accept=".json" ref={jsonInputRef} onChange={handleJsonImport} className="hidden" />
       
       <div className="flex gap-1 bg-white border border-slate-300 rounded-md shadow-sm">
@@ -482,16 +435,9 @@ export const DataControls: React.FC<DataControlsProps> = ({ entries, metrics, on
         <button 
             onClick={() => fileInputRef.current?.click()} disabled={loading}
             className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 border-r border-slate-200 transition-colors disabled:opacity-50"
-            title="Import Excel"
+            title="Import Excel/CSV (Smart Rescue Enabled)"
         >
             <Upload className="w-3 h-3" />
-        </button>
-        <button 
-            onClick={() => repairInputRef.current?.click()} disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50"
-            title="Rescue/Repair Corrupt File"
-        >
-            <Wrench className="w-3 h-3" />
         </button>
       </div>
 

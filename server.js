@@ -24,6 +24,11 @@ app.use((req, res, next) => {
     next();
 });
 
+// Healthcheck endpoint for Docker/Traefik
+app.get('/', (req, res) => {
+    res.status(200).send('Longevity Server OK');
+});
+
 // Simple in-memory DB backed by file
 let db = {
   users: {}, // username -> { password, data }
