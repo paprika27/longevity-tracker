@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
-import { MetricValues, BioAgeResult, MetricConfig } from '../types';
-import * as calculators from '../services/riskCalculators';
-import { RadarView } from './RadarView'; // Import the existing RadarView component
+import { MetricValues, BioAgeResult, MetricConfig } from '../../types';
+import * as calculators from '../../services/riskCalculators';
+import { RadarView } from './RadarView'; 
 import { Activity, Dna, Info, AlertCircle, ChevronRight, ChevronDown, ChevronUp, AlertTriangle, Radar } from 'lucide-react';
 
 interface BiologicalAgeViewProps {

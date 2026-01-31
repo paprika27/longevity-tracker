@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
-import { MetricConfig, MetricValues } from '../types';
+import { MetricConfig, MetricValues } from '../../types';
 
 interface RadarViewProps {
   metrics: MetricConfig[];

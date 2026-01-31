@@ -1,3 +1,4 @@
+
 import { AgeFactor, BioAgeResult } from '../types';
 
 /**
@@ -46,6 +47,142 @@ export interface CVDRiskInputs {
     diabetes?: number;
 }
 
+// --- SHARED UNIT CONVERSION HELPERS ---
+
+interface NormalizedValue {
+    value: number;
+    note: string;
+    warning?: string;
+}
+
+const normalizeAlbumin = (albumin: number, totalProtein?: number): NormalizedValue => {
+    let value = albumin;
+    let note = '';
+    let warning;
+
+    // Albumin stored as % of total protein
+    if (albumin >= 20 && albumin <= 100) {
+        let tp_gL = 73; // Population mean default (7.3 g/dL → 73 g/L)
+        if (totalProtein) {
+            tp_gL = totalProtein < 20 ? totalProtein * 10 : totalProtein;
+        }
+        value = (albumin / 100) * tp_gL;
+        note = `${albumin}% → ${value.toFixed(1)} g/L (using TP: ${(tp_gL/10).toFixed(1)} g/dL)`;
+        
+        if (value < 30 || value > 55) {
+            warning = `Calculated albumin (${value.toFixed(1)} g/L) is outside normal range. Check total protein value.`;
+        }
+    } 
+    // Albumin in g/dL
+    else if (albumin >= 2.0 && albumin < 20) {
+        value = albumin * 10;
+        note = `${albumin} g/dL → ${value.toFixed(1)} g/L`;
+    }
+    // Already in g/L
+    else if (albumin >= 30 && albumin <= 55) {
+        value = albumin;
+        note = `${albumin} g/L`;
+    }
+    // Out of range - flag error
+    else {
+        warning = `Albumin value (${albumin}) is out of expected range. Please verify units and value.`;
+        value = 43; // Use population mean as fallback
+        note = `${albumin} (invalid - using default 43 g/L)`;
+    }
+    return { value, note, warning };
+};
+
+const normalizeCreatinine = (val: number): NormalizedValue => {
+    let value = val;
+    let note = '';
+    let warning;
+
+    // Creatinine: mg/dL → μmol/L conversion factor is 88.4
+    if (val < 10) {
+        // Likely mg/dL
+        value = val * 88.4;
+        note = `${val} mg/dL → ${value.toFixed(0)} μmol/L`;
+    } else {
+        note = `${val} μmol/L`;
+    }
+
+    if (value < 30 || value > 300) {
+        warning = `Creatinine (${value.toFixed(0)} μmol/L) is outside typical range.`;
+    }
+    return { value, note, warning };
+};
+
+const normalizeGlucose = (val: number): NormalizedValue => {
+    let value = val;
+    let note = '';
+    let warning;
+
+    // Glucose: mg/dL → mmol/L conversion factor is 18
+    if (val > 25) {
+        // Likely mg/dL
+        value = val / 18;
+        note = `${val} mg/dL → ${value.toFixed(1)} mmol/L`;
+    } else {
+        note = `${val} mmol/L`;
+    }
+
+    if (value < 2 || value > 20) {
+        warning = `Glucose (${value.toFixed(1)} mmol/L) is outside typical range.`;
+    }
+    return { value, note, warning };
+};
+
+const normalizeCRP = (val: number): NormalizedValue => {
+    // CRP: Natural log transformation, handle zero/negative
+    const lnVal = Math.log(Math.max(0.1, val));
+    let warning;
+    
+    if (val > 10) {
+        warning = `CRP (${val} mg/L) is elevated - may indicate acute inflammation.`;
+    }
+    return { value: lnVal, note: `${val} mg/L`, warning };
+};
+
+const normalizeCholesterol = (val: number): NormalizedValue => {
+    let value = val;
+    let note = '';
+    let warning;
+
+    // TC: mg/dL → mmol/L conversion factor is 38.67
+    if (val > 25) {
+        value = val / 38.67; 
+        note = `${val} mg/dL → ${value.toFixed(1)} mmol/L`;
+    } else {
+        note = `${val} mmol/L`;
+    }
+
+    if (value < 2 || value > 12) {
+        warning = `Cholesterol outside typical range.`;
+    }
+    return { value, note, warning };
+};
+
+const normalizeBloodPressure = (val: number): NormalizedValue => {
+    let value = val;
+    let note = '';
+    let warning;
+
+    if (val < 50) {
+        // Likely kPa (120 mmHg ~ 16 kPa)
+        value = val * 7.50062;
+        note = `${val} kPa → ${value.toFixed(0)} mmHg`;
+    } else {
+        note = `${val} mmHg`;
+    }
+
+    if (value < 80 || value > 200) {
+        warning = `SBP (${value.toFixed(0)} mmHg) is outside typical range.`;
+    }
+    return { value, note, warning };
+};
+
+// --- CALCULATORS ---
+
 export const calculatePhenoAge = (data: PhenoAgeInputs): BioAgeResult | null => {
     const { 
         age, albumin, creatinine, glucose, crp, mcv, rdw, alp, wbc, 
@@ -86,78 +223,19 @@ export const calculatePhenoAge = (data: PhenoAgeInputs): BioAgeResult | null => 
         };
     }
 
-    // --- Smart Unit Conversion with Validation ---
+    // --- Smart Unit Conversion ---
     
-    let alb_gL = albumin!;
-    let alb_note = '';
-    
-    // Albumin stored as % of total protein
-    if (albumin! >= 20 && albumin! <= 100) {
-        // This is albumin as % of total protein
-        let tp_gL = 73; // Population mean default (7.3 g/dL → 73 g/L)
-        if (total_protein) {
-            tp_gL = total_protein < 20 ? total_protein * 10 : total_protein;
-        }
-        alb_gL = (albumin! / 100) * tp_gL;
-        alb_note = `${albumin}% → ${alb_gL.toFixed(1)} g/L (using TP: ${(tp_gL/10).toFixed(1)} g/dL)`;
-        
-        // Validate result is in reasonable range
-        if (alb_gL < 30 || alb_gL > 55) {
-            warnings.push(`Calculated albumin (${alb_gL.toFixed(1)} g/L) is outside normal range. Check total protein value.`);
-        }
-    } 
-    // Albumin in g/dL
-    else if (albumin! >= 2.0 && albumin! < 20) {
-        alb_gL = albumin! * 10;
-        alb_note = `${albumin} g/dL → ${alb_gL.toFixed(1)} g/L`;
-    }
-    // Already in g/L
-    else if (albumin! >= 30 && albumin! <= 55) {
-        alb_gL = albumin!;
-        alb_note = `${albumin} g/L`;
-    }
-    // Out of range - flag error
-    else {
-        warnings.push(`Albumin value (${albumin}) is out of expected range. Please verify units and value.`);
-        alb_gL = 43; // Use population mean as fallback
-        alb_note = `${albumin} (invalid - using default 43 g/L)`;
-    }
+    const normAlb = normalizeAlbumin(albumin!, total_protein);
+    if (normAlb.warning) warnings.push(normAlb.warning);
 
-    // Creatinine: mg/dL → μmol/L conversion factor is 88.4
-    let creat_umol = creatinine!;
-    let creat_note = '';
-    if (creatinine! < 10) {
-        // Likely mg/dL
-        creat_umol = creatinine! * 88.4;
-        creat_note = `${creatinine} mg/dL → ${creat_umol.toFixed(0)} μmol/L`;
-    } else {
-        creat_note = `${creatinine} μmol/L`;
-    }
+    const normCre = normalizeCreatinine(creatinine!);
+    if (normCre.warning) warnings.push(normCre.warning);
 
-    // Glucose: mg/dL → mmol/L conversion factor is 18
-    let gluc_mmol = glucose!;
-    let gluc_note = '';
-    if (glucose! > 25) {
-        // Likely mg/dL
-        gluc_mmol = glucose! / 18;
-        gluc_note = `${glucose} mg/dL → ${gluc_mmol.toFixed(1)} mmol/L`;
-    } else {
-        gluc_note = `${glucose} mmol/L`;
-    }
+    const normGlu = normalizeGlucose(glucose!);
+    if (normGlu.warning) warnings.push(normGlu.warning);
 
-    // CRP: Natural log transformation, handle zero/negative
-    const ln_crp = Math.log(Math.max(0.1, crp!)); 
-    
-    // Validate ranges
-    if (creat_umol < 30 || creat_umol > 300) {
-        warnings.push(`Creatinine (${creat_umol.toFixed(0)} μmol/L) is outside typical range.`);
-    }
-    if (gluc_mmol < 2 || gluc_mmol > 20) {
-        warnings.push(`Glucose (${gluc_mmol.toFixed(1)} mmol/L) is outside typical range.`);
-    }
-    if (crp! > 10) {
-        warnings.push(`CRP (${crp} mg/L) is elevated - may indicate acute inflammation.`);
-    }
+    const normCRP = normalizeCRP(crp!);
+    if (normCRP.warning) warnings.push(normCRP.warning);
     
     // Levine 2018 Coefficients
     const c_age = 0.0804;
@@ -174,10 +252,10 @@ export const calculatePhenoAge = (data: PhenoAgeInputs): BioAgeResult | null => 
 
     const xb = 
         c_int +
-        (c_alb * alb_gL) +
-        (c_cre * creat_umol) +
-        (c_glu * gluc_mmol) +
-        (c_crp * ln_crp) +
+        (c_alb * normAlb.value) +
+        (c_cre * normCre.value) +
+        (c_glu * normGlu.value) +
+        (c_crp * normCRP.value) +
         (c_lym * lymph!) +
         (c_mcv * mcv!) +
         (c_rdw * rdw!) +
@@ -231,10 +309,10 @@ export const calculatePhenoAge = (data: PhenoAgeInputs): BioAgeResult | null => 
     };
 
     const factors: AgeFactor[] = [
-        { name: "Albumin", impact: getImpact(c_alb, alb_gL, ref.alb), value: alb_note },
-        { name: "Creatinine", impact: getImpact(c_cre, creat_umol, ref.cre), value: creat_note },
-        { name: "Glucose", impact: getImpact(c_glu, gluc_mmol, ref.glu), value: gluc_note },
-        { name: "CRP", impact: getImpact(c_crp, ln_crp, ref.crp), value: `${crp} mg/L` },
+        { name: "Albumin", impact: getImpact(c_alb, normAlb.value, ref.alb), value: normAlb.note },
+        { name: "Creatinine", impact: getImpact(c_cre, normCre.value, ref.cre), value: normCre.note },
+        { name: "Glucose", impact: getImpact(c_glu, normGlu.value, ref.glu), value: normGlu.note },
+        { name: "CRP", impact: getImpact(c_crp, normCRP.value, ref.crp), value: normCRP.note },
         { name: "Lymphocytes", impact: getImpact(c_lym, lymph!, ref.lym), value: `${lymph?.toFixed(1)}%` },
         { name: "MCV", impact: getImpact(c_mcv, mcv!, ref.mcv), value: `${mcv} fL` },
         { name: "RDW", impact: getImpact(c_rdw, rdw!, ref.rdw), value: `${rdw}%` },
@@ -266,9 +344,6 @@ export const calculatePhenoAge = (data: PhenoAgeInputs): BioAgeResult | null => 
  * - Klemera P, Doubal S. (2006). Mech Ageing Dev. 127(3):240-8
  * - Kwon D, Belsky DW. (2021). GeroScience. 43:2795-2808
  * - Multiple validation studies in NHANES, UK Biobank, China Kadoorie Biobank
- * 
- * The KDM method finds the biological age at which an individual's biomarker
- * profile would be considered "normal" based on population reference data.
  */
 export const calculateKDMBioAge = (data: KDMBioAgeInputs): BioAgeResult | null => {
     const { 
@@ -303,73 +378,35 @@ export const calculateKDMBioAge = (data: KDMBioAgeInputs): BioAgeResult | null =
     }
 
     // --- Unit Conversion ---
-    let alb_gL = albumin!;
-    let alb_note = '';
-    
-    if (albumin! >= 20 && albumin! <= 100) {
-        let tp_gL = 73; // Population mean default
-        if (total_protein) {
-            tp_gL = total_protein < 20 ? total_protein * 10 : total_protein;
-        }
-        alb_gL = (albumin! / 100) * tp_gL;
-        alb_note = `${albumin}% → ${alb_gL.toFixed(1)} g/L`;
-    } else if (albumin! >= 2.0 && albumin! < 20) {
-        alb_gL = albumin! * 10;
-        alb_note = `${albumin} g/dL → ${alb_gL.toFixed(1)} g/L`;
-    } else if (albumin! >= 30 && albumin! <= 55) {
-        alb_gL = albumin!;
-        alb_note = `${albumin} g/L`;
-    } else {
-        alb_gL = 43;
-        alb_note = `${albumin} (invalid)`;
-    }
+    const normAlb = normalizeAlbumin(albumin!, total_protein);
+    if (normAlb.warning) warnings.push(normAlb.warning);
 
-    let creat_umol = creatinine!;
-    let creat_note = '';
-    if (creatinine! < 10) {
-        creat_umol = creatinine! * 88.4;
-        creat_note = `${creatinine} mg/dL → ${creat_umol.toFixed(0)} μmol/L`;
-    } else {
-        creat_note = `${creatinine} μmol/L`;
-    }
+    const normCre = normalizeCreatinine(creatinine!);
+    if (normCre.warning) warnings.push(normCre.warning);
 
-    let gluc_mmol = glucose!;
-    let gluc_note = '';
-    if (glucose! > 25) {
-        gluc_mmol = glucose! / 18;
-        gluc_note = `${glucose} mg/dL → ${gluc_mmol.toFixed(1)} mmol/L`;
-    } else {
-        gluc_note = `${glucose} mmol/L`;
-    }
+    const normGlu = normalizeGlucose(glucose!);
+    if (normGlu.warning) warnings.push(normGlu.warning);
 
-    let chol_mmol = total_cholesterol!;
-    let chol_note = '';
-    if (total_cholesterol! > 25) {
-        chol_mmol = total_cholesterol! / 38.67; 
-        chol_note = `${total_cholesterol} mg/dL → ${chol_mmol.toFixed(1)} mmol/L`;
-    } else {
-        chol_note = `${total_cholesterol} mmol/L`;
-    }
+    const normChol = normalizeCholesterol(total_cholesterol!);
+    if (normChol.warning) warnings.push(normChol.warning);
 
-    const ln_crp = Math.log(Math.max(0.1, crp!));
+    const normCRP = normalizeCRP(crp!);
+    if (normCRP.warning) warnings.push(normCRP.warning);
 
-    // Validate ranges
-    if (creat_umol < 30 || creat_umol > 300) warnings.push(`Creatinine outside typical range.`);
-    if (gluc_mmol < 2 || gluc_mmol > 20) warnings.push(`Glucose outside typical range.`);
-    if (chol_mmol < 2 || chol_mmol > 10) warnings.push(`Cholesterol outside typical range.`);
-    if (sbp! < 80 || sbp! > 200) warnings.push(`BP outside typical range.`);
+    const normSBP = normalizeBloodPressure(sbp!);
+    if (normSBP.warning) warnings.push(normSBP.warning);
 
     // --- KDM Algorithm Implementation ---
     // NHANES III data (ages 30-75)
     
     const biomarkers = [
-        { name: 'Albumin', value: alb_gL, note: alb_note, slope: -0.05, intercept: 45.5, sd: 3.0 },
-        { name: 'Creatinine', value: creat_umol, note: creat_note, slope: 0.25, intercept: 75.0, sd: 15.0 },
-        { name: 'Glucose', value: gluc_mmol, note: gluc_note, slope: 0.025, intercept: 5.0, sd: 1.2 },
-        { name: 'Total Chol', value: chol_mmol, note: chol_note, slope: 0.01, intercept: 5.2, sd: 1.0 },
-        { name: 'CRP (ln)', value: ln_crp, note: `${crp} mg/L`, slope: 0.012, intercept: 0.6, sd: 1.1 },
+        { name: 'Albumin', value: normAlb.value, note: normAlb.note, slope: -0.05, intercept: 45.5, sd: 3.0 },
+        { name: 'Creatinine', value: normCre.value, note: normCre.note, slope: 0.25, intercept: 75.0, sd: 15.0 },
+        { name: 'Glucose', value: normGlu.value, note: normGlu.note, slope: 0.025, intercept: 5.0, sd: 1.2 },
+        { name: 'Total Chol', value: normChol.value, note: normChol.note, slope: 0.01, intercept: 5.2, sd: 1.0 },
+        { name: 'CRP (ln)', value: normCRP.value, note: normCRP.note, slope: 0.012, intercept: 0.6, sd: 1.1 },
         { name: 'Alk Phos', value: alp!, note: `${alp} U/L`, slope: 0.2, intercept: 65, sd: 20 },
-        { name: 'SBP', value: sbp!, note: `${sbp} mmHg`, slope: 0.4, intercept: 115, sd: 18 }
+        { name: 'SBP', value: normSBP.value, note: normSBP.note, slope: 0.4, intercept: 115, sd: 18 }
     ];
 
     if (bmi && bmi > 10 && bmi < 60) {
@@ -444,6 +481,7 @@ export const calculateKDMBioAge = (data: KDMBioAgeInputs): BioAgeResult | null =
 
 /**
  * Calculates 10-Year ASCVD Risk using the ACC/AHA 2013 Pooled Cohort Equations.
+ * Includes robust unit conversion to handle both mg/dL and mmol/L inputs.
  */
 export const calculateCVDRisk = (data: CVDRiskInputs): number | null => {
     const { age, sex, tc, hdl, sbp, treatment = 0, smoker = 0, diabetes = 0 } = data;
@@ -453,15 +491,27 @@ export const calculateCVDRisk = (data: CVDRiskInputs): number | null => {
     // Range validation
     if (age < 20 || age > 79) return null;
     
+    // --- Normalize Inputs ---
+    // normalizeCholesterol returns mmol/L. 
+    // The ASCVD formula below expects mg/dL.
+    const normTC = normalizeCholesterol(tc);
+    const normHDL = normalizeCholesterol(hdl);
+    const normSBP = normalizeBloodPressure(sbp);
+
+    // Convert back to mg/dL for equation (1 mmol/L = 38.67 mg/dL)
+    const tc_mg = normTC.value * 38.67;
+    const hdl_mg = normHDL.value * 38.67;
+    const sbp_val = normSBP.value;
+
     const lnAge = Math.log(age);
-    const lnTC = Math.log(tc);
-    const lnHdl = Math.log(hdl);
-    const lnSbp = Math.log(sbp);
+    const lnTC = Math.log(tc_mg);
+    const lnHdl = Math.log(hdl_mg);
+    const lnSbp = Math.log(sbp_val);
 
     let sum = 0;
 
     if (sex === 0) {
-        // FEMALE
+        // FEMALE (White/Other coefficients from 2013 Guideline)
         const ageCoeff = -29.799;
         const ageSqCoeff = 4.884;
         const totCoeff = 13.540;
@@ -492,7 +542,7 @@ export const calculateCVDRisk = (data: CVDRiskInputs): number | null => {
         return parseFloat((risk * 100).toFixed(1));
 
     } else {
-        // MALE
+        // MALE (White/Other coefficients from 2013 Guideline)
         const ageCoeff = 12.344;
         const totCoeff = 11.853;
         const ageTotCoeff = -2.664;

@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { MetricConfig, StatusLevel, DateFormat, MetricStatusData } from '../types';
-import { Smile, Meh, Frown, HelpCircle, Clock, Flame, Target } from 'lucide-react';
+import { MetricConfig, StatusLevel, DateFormat, MetricStatusData } from '../../types';
+import { Smile, Meh, Frown, HelpCircle, Clock, Flame } from 'lucide-react';
 import { formatDuration } from './FormattedInputs';
 
 interface MetricCardProps {

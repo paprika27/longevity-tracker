@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { Pencil, Save, X } from 'lucide-react';
-import * as db from '../services/storageService';
+import * as db from '../../services/storageService';
 
 export const RegimenView: React.FC = () => {
   const [content, setContent] = useState('');

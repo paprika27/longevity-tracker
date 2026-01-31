@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, Terminal, Wifi, ShieldAlert, ExternalLink, Globe, Activity, X, Lock, RefreshCw, CheckCircle2, ChevronRight, Image as ImageIcon } from 'lucide-react';
-import * as authService from '../services/authService';
+import { Cloud, Loader2, LogIn, LogOut, User, Server, AlertTriangle, X, RefreshCw, CheckCircle2, ExternalLink } from 'lucide-react';
+import * as authService from '../../services/authService';
 
 interface AuthWidgetProps {
     onSyncComplete: () => void;
@@ -29,17 +29,8 @@ export const AuthWidget: React.FC<AuthWidgetProps> = ({ onSyncComplete }) => {
     // Debug Logging
     const [logs, setLogs] = useState<string[]>([]);
     
-    // Platform State
-    const [isNative, setIsNative] = useState(false);
-
     // Image Probe State (to detect if content loads even if fetch fails - e.g. CORS vs SSL)
     const [probeSuccess, setProbeSuccess] = useState<boolean | null>(null);
-
-    useEffect(() => {
-        import('@capacitor/core').then(mod => {
-            setIsNative(mod.Capacitor.isNativePlatform());
-        }).catch(() => setIsNative(false));
-    }, []);
 
     const toggleWebFetch = (val: boolean) => {
         setUseWebFetch(val);

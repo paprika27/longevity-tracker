@@ -1,8 +1,8 @@
 
 import React, { useRef, useState } from 'react';
 import { Download, Upload, Loader2, FileJson, FileSpreadsheet } from 'lucide-react';
-import { LogEntry, MetricConfig, MetricValues } from '../types';
-import * as db from '../services/storageService';
+import { LogEntry, MetricConfig, MetricValues } from '../../types';
+import * as db from '../../services/storageService';
 
 interface DataControlsProps {
   entries: LogEntry[];

@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { MetricConfig, AppSettings, DateFormat, TimeFormat } from '../types';
+import { MetricConfig, AppSettings, DateFormat, TimeFormat } from '../../types';
 import { Plus, Trash2, Eye, EyeOff, Radar, Save, RotateCcw, PenSquare, CheckSquare, Square, X, Calculator, AlertTriangle, FlaskConical, Sliders, Clock, Info } from 'lucide-react';
-import * as db from '../services/storageService';
+import * as db from '../../services/storageService';
 
 interface MetricManagerProps {
   metrics: MetricConfig[];
@@ -145,6 +145,12 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
 
   const handleAddNewMetric = () => {
     const newId = `custom_${Date.now()}`;
+    const isCalcTab = activeCategory === 'Calculated';
+    
+    // If in Calculated tab, default to calculated. 
+    // If in a standard category (e.g. Weekly), assign to that category.
+    const initialCategory = isCalcTab ? 'daily' : activeCategory;
+
     const newMetric: MetricConfig = {
       id: newId,
       name: "New Metric",
@@ -153,10 +159,10 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
       fact: "Track your progress.",
       citation: "Self",
       step: 1,
-      category: activeCategory, // Add to current view
+      category: initialCategory, 
       active: true,
       includeInSpider: true,
-      isCalculated: false,
+      isCalculated: isCalcTab, // Default to calculated if created in that tab
       isTimeBased: false
     };
     const updated = [...metrics, newMetric];
@@ -338,6 +344,19 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                             />
                             <p className="text-[10px] text-slate-500">Change to rename. Set to existing ID to merge data.</p>
                         </div>
+                        
+                        <div className="space-y-1">
+                             <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Assigned Category</label>
+                             <select 
+                                className="w-full text-sm font-medium text-slate-900 border-slate-300 rounded-md bg-white"
+                                value={editForm.category}
+                                onChange={e => setEditForm({...editForm, category: e.target.value})}
+                             >
+                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                                 <option value="imported">Unassigned / Imported</option>
+                             </select>
+                        </div>
+
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Unit</label>
                             <input 
@@ -432,20 +451,6 @@ export const MetricManager: React.FC<MetricManagerProps> = ({ metrics, onUpdate,
                                     </span>
                                 </div>
                              </div>
-                        </div>
-                        )}
-
-                        {!editForm.isCalculated && (
-                        <div className="space-y-1 md:col-span-2 mt-2">
-                             <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Assigned Form</label>
-                             <select 
-                                className="w-full text-sm font-medium text-slate-900 border-slate-300 rounded-md bg-white"
-                                value={editForm.category}
-                                onChange={e => setEditForm({...editForm, category: e.target.value})}
-                             >
-                                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                                 <option value="imported">Unassigned / Imported</option>
-                             </select>
                         </div>
                         )}
                     </div>

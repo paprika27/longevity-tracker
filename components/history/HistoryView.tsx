@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush, ReferenceArea } from 'recharts';
-import { LogEntry, MetricConfig, AppSettings } from '../types';
+import { LogEntry, MetricConfig, AppSettings } from '../../types';
 import { XCircle } from 'lucide-react';
-import { formatDuration } from './FormattedInputs';
+import { formatDuration } from '../shared/FormattedInputs';
 
 interface HistoryViewProps {
   entries: LogEntry[];
@@ -45,7 +45,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
   }, [entries]);
 
   // Prepare data with proper timestamps for XAxis type="number"
-  // Filter data to only include range where selected metrics have values
   const data = useMemo(() => {
     // 1. Filter entries: Only keep entries where at least one SELECTED metric has a valid value.
     const relevantEntries = sortedEntries.filter(entry => {
@@ -70,6 +69,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
     });
   }, [sortedEntries, metrics, selectedMetrics]);
 
+  // Determine span of data to allow smart date formatting
+  const timeSpanData = useMemo(() => {
+     if (data.length === 0) return { min: 0, max: 0, spanDays: 0 };
+     const min = data[0].timestamp;
+     const max = data[data.length - 1].timestamp;
+     const spanDays = (max - min) / (1000 * 60 * 60 * 24);
+     return { min, max, spanDays };
+  }, [data]);
+
   const toggleMetric = (id: string) => {
     if (selectedMetrics.includes(id)) {
         onSelectionChange(selectedMetrics.filter(m => m !== id));
@@ -87,17 +95,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
       onSelectionChange([]);
   };
 
-  // Helper for Date Formatting
+  // Helper for Date Formatting on X Axis (Short/Compact for Mobile)
   const formatTickDate = (unix: number) => {
       const date = new Date(unix);
+      
+      // If data spans more than a year, prioritize showing the Year
+      if (timeSpanData.spanDays > 365) {
+          return date.getFullYear().toString();
+      }
+      // If data spans more than 2 months, show Month/Year
+      if (timeSpanData.spanDays > 60) {
+          const m = String(date.getMonth() + 1).padStart(2, '0');
+          const y = String(date.getFullYear()).slice(-2);
+          return `${m}/${y}`;
+      }
+      
+      // Default: Day/Month
       const d = String(date.getDate()).padStart(2, '0');
       const m = String(date.getMonth() + 1).padStart(2, '0');
-      const y = date.getFullYear();
-      const yy = String(y).slice(-2);
-
-      if (settings.dateFormat === 'DD.MM.YYYY') return `${d}.${m}.${yy}`;
-      if (settings.dateFormat === 'MM/DD/YYYY') return `${m}/${d}/${yy}`;
-      return `${y}-${m}-${d}`;
+      return `${d}/${m}`;
   };
 
   const formatTooltipLabel = (unix: number) => {
@@ -197,7 +213,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                 </div>
             ) : (
             <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <LineChart data={data} margin={{ top: 10, right: 5, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 
                 {/* Reference Area MUST be before Lines to be in background */}
@@ -217,25 +233,25 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                     scale="time"
                     domain={['dataMin', 'dataMax']} 
                     stroke="#94a3b8" 
-                    fontSize={12} 
+                    fontSize={10} 
                     tickFormatter={formatTickDate}
                     tickLine={false}
                     axisLine={false}
-                    minTickGap={50}
+                    minTickGap={60} 
                 />
                 <YAxis 
                     stroke="#94a3b8" 
-                    fontSize={12} 
+                    fontSize={10} 
                     tickLine={false}
                     axisLine={false}
                     domain={['auto', 'auto']}
-                    width={60}
+                    width={40}
                     tickFormatter={(val) => {
                         // If single metric and it's time based, format Y axis as time
                         if (activeMetricConfigs.length === 1 && activeMetricConfigs[0].isTimeBased) {
                             return formatDuration(val);
                         }
-                        return commonUnit ? `${val} ${commonUnit}` : `${val}`;
+                        return commonUnit ? `${val}` : `${val}`;
                     }}
                 />
                 <Tooltip 
@@ -280,9 +296,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
             </ResponsiveContainer>
             )}
             
-            {/* Range Label Overlay (for better visibility than ReferenceArea label which can be clipped) */}
+            {/* Range Label Overlay */}
             {showRange && singleMetric && (
-                 <div className="absolute top-4 right-12 bg-green-50 text-green-700 text-[10px] px-2 py-1 rounded border border-green-100 shadow-sm pointer-events-none opacity-80">
+                 <div className="absolute top-4 right-8 bg-green-50 text-green-700 text-[10px] px-2 py-1 rounded border border-green-100 shadow-sm pointer-events-none opacity-80">
                      Target: {singleMetric.isTimeBased ? formatDuration(singleMetric.range[0]) : singleMetric.range[0]} - {singleMetric.isTimeBased ? formatDuration(singleMetric.range[1]) : singleMetric.range[1]} {singleMetric.unit}
                  </div>
             )}
@@ -296,7 +312,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
         </div>
         <div className="flex justify-between items-center mt-2">
             <p className="text-xs text-slate-400">
-                Drag the bottom slider to zoom time. Drag the bottom-right corner of the chart area to resize height.
+                Drag the bottom slider to zoom time. Drag the bottom-right corner to resize.
             </p>
         </div>
       </div>

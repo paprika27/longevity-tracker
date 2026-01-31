@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
 import { Activity, ListChecks, TrendingUp, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import { MetricConfig } from '../types';
-import { formatDuration } from './FormattedInputs';
+import { MetricConfig } from '../../types';
+import { formatDuration } from '../shared/FormattedInputs';
 
 interface CoachBannerProps {
   missingDailyMetrics: MetricConfig[];
