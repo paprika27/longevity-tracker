@@ -98,13 +98,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
   // Helper for Date Formatting on X Axis (Short/Compact for Mobile)
   const formatTickDate = (unix: number) => {
       const date = new Date(unix);
+      const span = timeSpanData.spanDays;
       
       // If data spans more than a year, prioritize showing the Year
-      if (timeSpanData.spanDays > 365) {
-          return date.getFullYear().toString();
+      if (span > 365) {
+          // '23, '24
+          return `'${String(date.getFullYear()).slice(-2)}`;
       }
-      // If data spans more than 2 months, show Month/Year
-      if (timeSpanData.spanDays > 60) {
+      // If data spans more than 3 months, show Month/Year
+      if (span > 90) {
           const m = String(date.getMonth() + 1).padStart(2, '0');
           const y = String(date.getFullYear()).slice(-2);
           return `${m}/${y}`;
@@ -237,7 +239,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ entries, metrics, sele
                     tickFormatter={formatTickDate}
                     tickLine={false}
                     axisLine={false}
-                    minTickGap={60} 
+                    minTickGap={80} // Increased gap for mobile readability
+                    tickCount={8}   // Limit total ticks
                 />
                 <YAxis 
                     stroke="#94a3b8" 

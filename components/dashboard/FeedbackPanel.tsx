@@ -54,7 +54,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics, dashboard
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 print:hidden">
             <div className="flex flex-wrap justify-between items-center gap-3">
                 <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
                     <Quote className="w-5 h-5 text-indigo-500" /> Analysis & Evidence

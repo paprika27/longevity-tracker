@@ -20,21 +20,21 @@ export const CoachBanner: React.FC<CoachBannerProps> = ({ missingDailyMetrics, w
   const hiddenCount = missingDailyMetrics.length - visibleDaily.length;
 
   return (
-    <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden mb-8">
-      <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center">
+    <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden mb-8 print:border-slate-300 print:shadow-none print:mb-4">
+      <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center print:bg-none print:border-b-2 print:border-slate-200">
         <div>
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-indigo-600" />
+            <Activity className="w-5 h-5 text-indigo-600 print:text-slate-800" />
             Coach's Daily Briefing
           </h3>
           <p className="text-xs text-slate-500 mt-0.5 uppercase tracking-wide font-semibold">{dayName}</p>
         </div>
       </div>
       
-      <div className="p-0 sm:p-6 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-indigo-50">
+      <div className="p-0 sm:p-6 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-indigo-50 print:block print:divide-none">
         
-        {/* LEFT: DAILY INPUTS */}
-        <div className="p-6 sm:p-0 sm:pr-6">
+        {/* LEFT: DAILY INPUTS - HIDDEN ON PRINT */}
+        <div className="p-6 sm:p-0 sm:pr-6 print:hidden">
           <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
             <ListChecks className="w-4 h-4 text-orange-500" /> 
             Log These Today
@@ -79,15 +79,15 @@ export const CoachBanner: React.FC<CoachBannerProps> = ({ missingDailyMetrics, w
           )}
         </div>
 
-        {/* RIGHT: WEEKLY ACCUMULATION */}
-        <div className="p-6 sm:p-0 sm:pl-6">
-          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-blue-500" /> 
+        {/* RIGHT: WEEKLY ACCUMULATION - VISIBLE ON PRINT */}
+        <div className="p-6 sm:p-0 sm:pl-6 print:p-0 print:pl-0 print:w-full">
+          <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2 print:text-slate-700 print:mb-2">
+            <TrendingUp className="w-4 h-4 text-blue-500 print:text-slate-700" /> 
             Weekly Accumulation
           </h4>
           
           {weeklyMetrics.length > 0 ? (
-            <div className="space-y-4 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
+            <div className="space-y-4 max-h-[250px] overflow-y-auto custom-scrollbar pr-2 print:max-h-none print:overflow-visible">
               {weeklyMetrics.map(item => {
                 const pct = Math.min(100, Math.round((item.current / item.target) * 100));
                 
@@ -100,16 +100,16 @@ export const CoachBanner: React.FC<CoachBannerProps> = ({ missingDailyMetrics, w
                 const formattedTarget = item.config.isTimeBased ? formatDuration(item.target) : item.target;
 
                 return (
-                  <div key={item.config.id}>
+                  <div key={item.config.id} className="print:break-inside-avoid">
                     <div className="flex justify-between text-sm mb-1">
                       <span className="font-medium text-slate-700">{item.config.name}</span>
-                      <span className={`font-mono text-xs ${item.isAtRisk ? 'text-orange-600 font-bold' : 'text-slate-500'}`}>
+                      <span className={`font-mono text-xs ${item.isAtRisk ? 'text-orange-600 font-bold' : 'text-slate-500'} print:text-slate-700`}>
                         {formattedCurrent} / {formattedTarget} {item.config.unit.split('/')[0]}
                       </span>
                     </div>
-                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden print:bg-slate-200">
                       <div 
-                        className={`h-full rounded-full ${barColor} transition-all duration-500`} 
+                        className={`h-full rounded-full ${barColor} transition-all duration-500 print:print-color-adjust-exact`} 
                         style={{ width: `${pct}%` }}
                       ></div>
                     </div>

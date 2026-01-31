@@ -61,8 +61,8 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ metrics, dashboardStat
 
     return (
         <div>
-            {/* Controls Header */}
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+            {/* Controls Header - HIDDEN ON PRINT */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4 print:hidden">
                 <h3 className="text-lg font-semibold text-slate-700 whitespace-nowrap">Detailed Metrics</h3>
                 <div className="w-full lg:w-auto flex flex-col sm:flex-row gap-2 flex-wrap">
                     <div className="relative flex-1 min-w-[140px]">
@@ -93,20 +93,24 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({ metrics, dashboardStat
                 </div>
             </div>
 
-            {/* The Grid */}
-            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {/* Print Header */}
+            <h3 className="hidden print:block text-xl font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Full Metric Report</h3>
+
+            {/* The Grid - Force 3 cols on print */}
+            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 print:grid-cols-3 print:gap-3">
                 {gridMetrics.map(m => (
-                    <MetricCard
-                        key={m.id}
-                        config={m}
-                        data={dashboardState[m.id]}
-                        onClick={() => onMetricClick(m.id)}
-                        dateFormat={settings.dateFormat}
-                    />
+                    <div key={m.id} className="print:break-inside-avoid">
+                        <MetricCard
+                            config={m}
+                            data={dashboardState[m.id]}
+                            onClick={() => onMetricClick(m.id)}
+                            dateFormat={settings.dateFormat}
+                        />
+                    </div>
                 ))}
             </div>
             {gridMetrics.length === 0 && (
-                <div className="text-center py-12 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                <div className="text-center py-12 text-slate-400 border border-dashed border-slate-200 rounded-xl print:hidden">
                     No metrics match your filters.
                 </div>
             )}

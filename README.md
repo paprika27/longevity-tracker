@@ -92,7 +92,7 @@ If testing against a local `http://` server, you must allow cleartext traffic:
     ```xml
     android:usesCleartextTraffic="true"
     ```
-3.  Ensure capacitor config permits http
+
 ---
 
 ## 📂 Data & Export
